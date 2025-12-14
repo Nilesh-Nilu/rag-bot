@@ -4,6 +4,46 @@ A complete **Retrieval-Augmented Generation (RAG)** chatbot system that answers 
 
 ---
 
+## 🚀 Quick Start
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/Nilesh-Nilu/rag-bot.git
+cd rag-bot
+
+# Install backend dependencies
+npm install
+
+# Install frontend dependencies
+cd chatbot-ui && npm install && cd ..
+```
+
+### 2. Configure Environment
+
+Create a `.env` file in the root directory:
+
+```env
+API_URL=http://213.210.37.56:8080
+API_TOKEN=your_ollama_bearer_token
+PORT=3001
+```
+
+### 3. Run the Application
+
+```bash
+# Terminal 1 - Start backend
+npm run server
+
+# Terminal 2 - Start frontend
+cd chatbot-ui && npm run dev
+```
+
+- **Backend**: http://localhost:3001
+- **Frontend**: http://localhost:5173
+
+---
+
 ## 📁 Project Structure
 
 ```
