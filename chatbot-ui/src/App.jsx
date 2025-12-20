@@ -17,13 +17,6 @@ function App() {
   useEffect(() => {
     if (botId) {
       fetchBotInfo();
-      setMessages([
-        {
-          role: "assistant",
-          content:
-            "Hello! Upload a PDF document and I'll answer questions based only on its content. 📄",
-        },
-      ]);
     }
   }, [botId]);
 
@@ -65,8 +58,12 @@ function App() {
   };
 
   const handleFileUpload = async (file) => {
-    if (!file || file.type !== "application/pdf") {
-      setUploadStatus({ type: "error", message: "Please upload a PDF file" });
+    const allowedTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ];
+    if (!file || !allowedTypes.includes(file.type)) {
+      setUploadStatus({ type: "error", message: "Please upload a PDF or DOCX file" });
       return;
     }
 
@@ -86,15 +83,8 @@ function App() {
       if (data.success) {
         setUploadStatus({
           type: "success",
-          message: `✅ ${data.filename} - ${data.chunks} chunks (${data.characters} chars)`,
+          message: `✅ ${data.filename} uploaded successfully!`,
         });
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `I've processed "${data.filename}" (${data.chunks} sections). You can now ask me questions about it!`,
-          },
-        ]);
         setActiveTab("chat");
       } else {
         setUploadStatus({ 
@@ -224,13 +214,20 @@ function App() {
           {activeTab === "chat" && (
             <div className="chat-panel">
               <div className="chat-header">
-                <h2>💬 Chat with your documents</h2>
+                <h2>💬 Chat</h2>
               </div>
               <div className="messages">
+                {messages.length === 0 && !isLoading && (
+                  <div className="empty-chat">
+                    <div className="empty-icon">💬</div>
+                    <p>Start a conversation!</p>
+                    <span>Say hi or ask a question</span>
+                  </div>
+                )}
                 {messages.map((msg, i) => (
                   <div key={i} className={`message ${msg.role}`}>
                     <div className="message-avatar">
-                      {msg.role === "assistant" ? "📄" : "👤"}
+                      {msg.role === "assistant" ? "🤖" : "👤"}
                     </div>
                     <div className="message-content">
                       <p>{msg.content}</p>
@@ -239,7 +236,7 @@ function App() {
                 ))}
                 {isLoading && (
                   <div className="message assistant">
-                    <div className="message-avatar">📄</div>
+                    <div className="message-avatar">🤖</div>
                     <div className="message-content typing">
                       <span></span>
                       <span></span>
@@ -254,7 +251,7 @@ function App() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask about your documents..."
+                  placeholder="Type a message..."
                   disabled={isLoading}
                 />
                 <button type="submit" disabled={isLoading || !input.trim()}>
@@ -274,8 +271,8 @@ function App() {
           {activeTab === "upload" && (
             <div className="upload-panel">
               <div className="panel-header">
-                <h2>📤 Upload PDF Documents</h2>
-                <p>Upload PDFs to train your chatbot. It will only answer from these documents.</p>
+                <h2>📤 Upload Documents</h2>
+                <p>Upload PDF or DOCX files to train your chatbot. It will only answer from these documents.</p>
               </div>
               <div
                 className={`upload-zone ${dragOver ? "dragover" : ""}`}
@@ -288,12 +285,12 @@ function App() {
                 onClick={() => fileInputRef.current.click()}
               >
                 <div className="upload-icon">📄</div>
-                <p>Drag & drop PDF here</p>
+                <p>Drag & drop PDF or DOCX here</p>
                 <span>or click to browse</span>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf"
+                  accept=".pdf,.docx"
                   onChange={(e) => handleFileUpload(e.target.files[0])}
                   style={{ display: "none" }}
                 />

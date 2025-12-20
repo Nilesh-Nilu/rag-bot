@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { config } from "dotenv";
-import { extractPdfText, chunkText } from "./pdf.js";
+import { extractPdfText, extractDocxText, chunkText } from "./pdf.js";
 import { getTextVector } from "./embedding.js";
 import { createBot, insertChunk, searchSimilar, getBotInfo, clearBotDocuments } from "./db.js";
 import { generateAnswer } from "./rag.js";
@@ -30,13 +30,18 @@ const storage = multer.diskStorage({
   },
 });
 
+const allowedMimes = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+];
+
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === "application/pdf") {
+    if (allowedMimes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error("Only PDF files are allowed"), false);
+      cb(new Error("Only PDF and DOCX files are allowed"), false);
     }
   },
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
@@ -54,20 +59,28 @@ app.post("/api/bots", async (req, res) => {
   }
 });
 
-// Upload PDF for a specific bot
+// Upload document for a specific bot
 app.post("/api/bots/:botId/upload", upload.single("pdf"), async (req, res) => {
   try {
     const { botId } = req.params;
     const file = req.file;
 
     if (!file) {
-      return res.status(400).json({ error: "No PDF file uploaded" });
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    console.log(`📘 Processing PDF: ${file.originalname}`);
+    console.log(`📘 Processing document: ${file.originalname}`);
 
-    // Extract text from PDF
-    const text = await extractPdfText(file.path);
+    // Extract text based on file type
+    let text;
+    if (file.mimetype === "application/pdf") {
+      text = await extractPdfText(file.path);
+    } else if (file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+      text = await extractDocxText(file.path);
+    } else {
+      fs.unlinkSync(file.path);
+      return res.status(400).json({ error: "Unsupported file type" });
+    }
 
     // Check if we got meaningful text
     const cleanText = text.trim();
