@@ -197,11 +197,85 @@ body {
 .chat-header {
   padding: 24px 32px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .chat-header h2 {
   font-size: 20px;
   font-weight: 600;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.language-select,
+.voice-select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+  max-width: 200px;
+}
+
+.language-select:hover,
+.voice-select:hover {
+  border-color: var(--accent);
+}
+
+.language-select:focus,
+.voice-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.language-select option,
+.voice-select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.voice-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.voice-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.voice-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent);
+}
+
+.voice-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.voice-btn.stop {
+  background: var(--error);
+  border-color: var(--error);
 }
 
 .messages {
@@ -295,6 +369,37 @@ body {
   word-wrap: break-word;
 }
 
+.message-content {
+  position: relative;
+}
+
+.speak-btn {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+.message:hover .speak-btn {
+  opacity: 1;
+}
+
+.speak-btn:hover {
+  background: var(--accent);
+  transform: scale(1.1);
+}
+
 .typing {
   display: flex;
   gap: 4px;
@@ -323,6 +428,43 @@ body {
   border-top: 1px solid var(--border);
   display: flex;
   gap: 12px;
+  align-items: center;
+}
+
+.mic-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.mic-btn:hover:not(:disabled) {
+  background: var(--bg-secondary);
+  border-color: var(--accent);
+}
+
+.mic-btn.listening {
+  background: var(--error);
+  border-color: var(--error);
+  animation: pulse 1s infinite;
+}
+
+.mic-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
 }
 
 .input-area input {

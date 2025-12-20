@@ -8,6 +8,7 @@ import { extractPdfText, extractDocxText, chunkText } from "./pdf.js";
 import { getTextVector } from "./embedding.js";
 import { createBot, insertChunk, searchSimilar, getBotInfo, clearBotDocuments } from "./db.js";
 import { generateAnswer } from "./rag.js";
+import gTTS from "gtts";
 
 config();
 
@@ -129,7 +130,7 @@ app.post("/api/bots/:botId/upload", upload.single("pdf"), async (req, res) => {
 app.post("/api/bots/:botId/chat", async (req, res) => {
   try {
     const { botId } = req.params;
-    const { message } = req.body;
+    const { message, language = 'en' } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: "Message is required" });
@@ -140,8 +141,11 @@ app.post("/api/bots/:botId/chat", async (req, res) => {
     const matches = await searchSimilar(botId, queryTermFreq);
 
     if (matches.length === 0) {
+      const noDocsMsg = language === 'hi' 
+        ? "अभी तक कोई दस्तावेज़ अपलोड नहीं किया गया है। कृपया पहले एक PDF अपलोड करें।"
+        : "No documents have been uploaded yet. Please upload a PDF first.";
       return res.json({
-        answer: "No documents have been uploaded yet. Please upload a PDF first.",
+        answer: noDocsMsg,
         sources: 0,
       });
     }
@@ -150,8 +154,8 @@ app.post("/api/bots/:botId/chat", async (req, res) => {
     
     console.log(`🔍 Found ${matches.length} relevant chunks for query: "${message.substring(0, 50)}..."`);
 
-    // Generate answer
-    const answer = await generateAnswer(message, context);
+    // Generate answer with language preference
+    const answer = await generateAnswer(message, context, language);
 
     res.json({ answer, sources: matches.length });
   } catch (error) {
@@ -177,6 +181,44 @@ app.get("/api/bots/:botId", async (req, res) => {
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+// Google TTS - FREE voice with language support
+// TTS endpoint
+app.post("/api/tts", async (req, res) => {
+  try {
+    const { text, lang = 'en-uk' } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: "Text is required" });
+    }
+
+    // Use Google TTS with selected language
+    const tts = new gTTS(text, lang);
+    
+    // Collect audio chunks
+    const chunks = [];
+    const stream = tts.stream();
+    
+    stream.on('data', (chunk) => chunks.push(chunk));
+    
+    await new Promise((resolve, reject) => {
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
+    
+    const audioBuffer = Buffer.concat(chunks);
+    
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': audioBuffer.byteLength,
+      'Cache-Control': 'no-cache',
+    });
+    
+    res.send(audioBuffer);
+  } catch (error) {
+    console.error("TTS Error:", error.message);
+    res.status(500).json({ error: "TTS failed" });
+  }
 });
 
 // Serve widget files
