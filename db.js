@@ -33,6 +33,30 @@ db.serialize(() => {
 
   // Create index for faster queries
   db.run(`CREATE INDEX IF NOT EXISTS idx_bot_id ON documents(bot_id)`);
+
+  // Bookings table (scheduled appointments per bot)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS bookings (
+      id TEXT PRIMARY KEY,
+      bot_id TEXT,
+      full_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      service TEXT NOT NULL,
+      preferred_date DATE NOT NULL,
+      preferred_time TEXT NOT NULL,
+      notes TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (bot_id) REFERENCES bots(id)
+    )
+  `);
+
+  // Create index for bookings queries
+  db.run(`CREATE INDEX IF NOT EXISTS idx_booking_bot_id ON bookings(bot_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_booking_status ON bookings(status)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_booking_date ON bookings(preferred_date)`);
 });
 
 // Create a new bot
@@ -115,5 +139,124 @@ export function clearBotDocuments(botId) {
       if (err) reject(err);
       resolve(this.changes);
     });
+  });
+}
+
+// ============ BOOKING FUNCTIONS ============
+
+// Create a new booking
+export function createBooking(botId, bookingData) {
+  return new Promise((resolve, reject) => {
+    const bookingId = uuidv4();
+    const { fullName, email, phone, service, preferredDate, preferredTime, notes } = bookingData;
+    
+    db.run(
+      `INSERT INTO bookings (id, bot_id, full_name, email, phone, service, preferred_date, preferred_time, notes) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [bookingId, botId, fullName, email, phone, service, preferredDate, preferredTime, notes || null],
+      function (err) {
+        if (err) reject(err);
+        resolve(bookingId);
+      }
+    );
+  });
+}
+
+// Get booking by ID
+export function getBooking(bookingId) {
+  return new Promise((resolve, reject) => {
+    db.get(`SELECT * FROM bookings WHERE id = ?`, [bookingId], (err, row) => {
+      if (err) reject(err);
+      resolve(row);
+    });
+  });
+}
+
+// Get all bookings for a bot
+export function getBotBookings(botId, status = null) {
+  return new Promise((resolve, reject) => {
+    let query = `SELECT * FROM bookings WHERE bot_id = ?`;
+    const params = [botId];
+    
+    if (status) {
+      query += ` AND status = ?`;
+      params.push(status);
+    }
+    
+    query += ` ORDER BY preferred_date ASC, preferred_time ASC`;
+    
+    db.all(query, params, (err, rows) => {
+      if (err) reject(err);
+      resolve(rows);
+    });
+  });
+}
+
+// Update booking status
+export function updateBookingStatus(bookingId, status) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE bookings SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [status, bookingId],
+      function (err) {
+        if (err) reject(err);
+        resolve(this.changes);
+      }
+    );
+  });
+}
+
+// Update booking details
+export function updateBooking(bookingId, updates) {
+  return new Promise((resolve, reject) => {
+    const fields = [];
+    const values = [];
+    
+    if (updates.fullName) { fields.push('full_name = ?'); values.push(updates.fullName); }
+    if (updates.email) { fields.push('email = ?'); values.push(updates.email); }
+    if (updates.phone) { fields.push('phone = ?'); values.push(updates.phone); }
+    if (updates.service) { fields.push('service = ?'); values.push(updates.service); }
+    if (updates.preferredDate) { fields.push('preferred_date = ?'); values.push(updates.preferredDate); }
+    if (updates.preferredTime) { fields.push('preferred_time = ?'); values.push(updates.preferredTime); }
+    if (updates.notes !== undefined) { fields.push('notes = ?'); values.push(updates.notes); }
+    if (updates.status) { fields.push('status = ?'); values.push(updates.status); }
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(bookingId);
+    
+    db.run(
+      `UPDATE bookings SET ${fields.join(', ')} WHERE id = ?`,
+      values,
+      function (err) {
+        if (err) reject(err);
+        resolve(this.changes);
+      }
+    );
+  });
+}
+
+// Delete a booking
+export function deleteBooking(bookingId) {
+  return new Promise((resolve, reject) => {
+    db.run(`DELETE FROM bookings WHERE id = ?`, [bookingId], function (err) {
+      if (err) reject(err);
+      resolve(this.changes);
+    });
+  });
+}
+
+// Get bookings by date range
+export function getBookingsByDateRange(botId, startDate, endDate) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT * FROM bookings 
+       WHERE bot_id = ? AND preferred_date BETWEEN ? AND ?
+       ORDER BY preferred_date ASC, preferred_time ASC`,
+      [botId, startDate, endDate],
+      (err, rows) => {
+        if (err) reject(err);
+        resolve(rows);
+      }
+    );
   });
 }

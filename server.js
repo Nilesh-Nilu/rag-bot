@@ -13,6 +13,15 @@ import gTTS from "gtts";
 config();
 
 const app = express();
+
+// Cal.com booking link for scheduling appointments
+const BOOKING_URL = "https://cal.com/nilu-tudu-l68h0q/project-discussion?overlayCalendar=true";
+
+// Keywords that indicate booking intent
+const BOOKING_KEYWORDS = [
+  'book', 'booking', 'schedule', 'appointment', 'meeting', 'call', 'consultation',
+  'बुक', 'बुकिंग', 'अपॉइंटमेंट', 'मीटिंग', 'शेड्यूल', 'कॉल'
+];
 app.use(cors());
 app.use(express.json());
 
@@ -126,6 +135,12 @@ app.post("/api/bots/:botId/upload", upload.single("pdf"), async (req, res) => {
   }
 });
 
+// Helper function to detect booking intent
+function hasBookingIntent(message) {
+  const lowerMessage = message.toLowerCase();
+  return BOOKING_KEYWORDS.some(keyword => lowerMessage.includes(keyword.toLowerCase()));
+}
+
 // Chat endpoint for a specific bot
 app.post("/api/bots/:botId/chat", async (req, res) => {
   try {
@@ -134,6 +149,20 @@ app.post("/api/bots/:botId/chat", async (req, res) => {
 
     if (!message) {
       return res.status(400).json({ error: "Message is required" });
+    }
+
+    // Check for booking intent
+    if (hasBookingIntent(message)) {
+      const bookingResponse = language === 'hi'
+        ? `बिल्कुल! आप नीचे दिए गए लिंक से अपॉइंटमेंट बुक कर सकते हैं। हमारी टीम जल्द ही आपसे संपर्क करेगी।`
+        : `Absolutely! You can schedule an appointment using the link below. Our team will get in touch with you soon.`;
+      
+      return res.json({
+        answer: bookingResponse,
+        sources: 0,
+        bookingUrl: BOOKING_URL,
+        isBookingResponse: true
+      });
     }
 
     // Search for relevant chunks
@@ -181,6 +210,11 @@ app.get("/api/bots/:botId", async (req, res) => {
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+// Get booking URL
+app.get("/api/booking-url", (req, res) => {
+  res.json({ bookingUrl: BOOKING_URL });
 });
 
 // Google TTS - FREE voice with language support

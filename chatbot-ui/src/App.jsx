@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import "./App.css";
 
 const API_URL = "http://localhost:3001";
+const CAL_LINK = "nilu-tudu-l68h0q/project-discussion";
 
 function App() {
   const [botId, setBotId] = useState(localStorage.getItem("botId") || "");
@@ -18,9 +19,42 @@ function App() {
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState('');
   const [language, setLanguage] = useState('en'); // 'en' for English, 'hi' for Hindi
+  const [showInlineBooking, setShowInlineBooking] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const calEmbedRef = useRef(null);
+
+  // Open Cal.com modal
+  const openCalModal = () => {
+    if (window.Cal) {
+      window.Cal.ns["project-discussion"]("modal", {
+        calLink: CAL_LINK,
+        config: {
+          layout: "month_view",
+          theme: "dark"
+        }
+      });
+    }
+  };
+
+  // Show inline booking calendar
+  const showInlineCalendar = () => {
+    setShowInlineBooking(true);
+    // Initialize inline embed after state update
+    setTimeout(() => {
+      if (window.Cal && calEmbedRef.current) {
+        window.Cal.ns["project-discussion"]("inline", {
+          elementOrSelector: calEmbedRef.current,
+          calLink: CAL_LINK,
+          config: {
+            layout: "month_view",
+            theme: "dark"
+          }
+        });
+      }
+    }, 100);
+  };
 
   // Language options (male Indian voices)
   const languages = [
@@ -31,18 +65,18 @@ function App() {
   // Load available voices - try multiple times
   useEffect(() => {
     let attempts = 0;
-    
+
     const loadVoices = () => {
       const voices = speechSynthesis.getVoices();
       console.log('Available voices:', voices.map(v => `${v.name} (${v.lang})`));
-      
+
       if (voices.length > 0) {
         setAvailableVoices(voices);
-        
+
         // Auto-select Hindi voice if in Hindi mode
         if (language === 'hi' && !selectedVoice) {
-          const hindiVoice = voices.find(v => 
-            v.lang.includes('hi') || 
+          const hindiVoice = voices.find(v =>
+            v.lang.includes('hi') ||
             v.name.toLowerCase().includes('hindi')
           );
           if (hindiVoice) {
@@ -55,7 +89,7 @@ function App() {
         setTimeout(loadVoices, 500);
       }
     };
-    
+
     loadVoices();
     speechSynthesis.onvoiceschanged = loadVoices;
   }, [language]);
@@ -67,7 +101,7 @@ function App() {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
-      
+
       // Set language based on selection
       const selectedLang = languages.find(l => l.code === language);
       recognitionRef.current.lang = selectedLang?.speechCode || 'en-IN';
@@ -92,7 +126,7 @@ function App() {
   // Get best voice based on language (female voices)
   const getBestVoice = (lang) => {
     const voices = availableVoices.length > 0 ? availableVoices : speechSynthesis.getVoices();
-    
+
     // If user selected a voice, use that
     if (selectedVoice) {
       const voice = voices.find(v => v.name === selectedVoice);
@@ -101,12 +135,12 @@ function App() {
         return voice;
       }
     }
-    
+
     console.log('Looking for voice for language:', lang);
-    
+
     if (lang === 'hi') {
       // Hindi female voices
-      const hindiVoice = voices.find(v => 
+      const hindiVoice = voices.find(v =>
         v.lang === 'hi-IN' ||
         v.lang === 'hi' ||
         v.name.toLowerCase().includes('hindi') ||
@@ -114,7 +148,7 @@ function App() {
         v.name.toLowerCase().includes('lekha') ||
         v.name.toLowerCase().includes('swara')
       );
-      
+
       if (hindiVoice) {
         console.log('Found Hindi voice:', hindiVoice.name);
         return hindiVoice;
@@ -123,10 +157,10 @@ function App() {
         alert('No Hindi voice found on your device. Please install Hindi voices in System Settings.');
       }
     }
-    
+
     // English - prefer female voices
     const femaleNames = ['Samantha', 'Victoria', 'Karen', 'Fiona', 'Moira', 'Tessa', 'Female', 'Veena', 'Lekha', 'Siri'];
-    
+
     // Find female voice
     for (const name of femaleNames) {
       const voice = voices.find(v => v.name.includes(name));
@@ -135,14 +169,14 @@ function App() {
         return voice;
       }
     }
-    
+
     // Find any English female voice
     const englishVoices = voices.filter(v => v.lang.startsWith('en'));
     if (englishVoices.length > 0) {
       console.log('Selected first English voice:', englishVoices[0].name);
       return englishVoices[0];
     }
-    
+
     // Fallback
     console.log('Using fallback voice:', voices[0]?.name);
     return voices[0];
@@ -154,14 +188,11 @@ function App() {
   // Make text more natural for speech
   const prepareTextForSpeech = (text) => {
     return text
-      // Add pauses at punctuation
-      .replace(/\./g, '. ')
-      .replace(/,/g, ', ')
-      .replace(/:/g, ': ')
-      .replace(/;/g, '; ')
-      .replace(/\?/g, '? ')
-      .replace(/!/g, '! ')
-      // Multiple spaces to single
+      // Replace ellipsis with long pause
+      .replace(/\.\.\./g, '... ')
+      // Add slightly longer pauses for transitions
+      .replace(/(\.|\?|!)\s/g, '$1   ')
+      // Clean up multiple spaces
       .replace(/\s+/g, ' ')
       .trim();
   };
@@ -169,64 +200,65 @@ function App() {
   // Speak text with ResponsiveVoice (free, natural voice)
   const speakText = async (text, forceSpeak = false) => {
     if ((!voiceEnabled && !forceSpeak) || !text) return;
-    
+
     // Stop any ongoing speech
     stopSpeaking();
-    
-    // Clean text
+
+    // Clean text for TTS
     const cleanText = text
       .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
       .replace(/[*_~`#]/g, '')
       .trim();
-    
+
     if (!cleanText) return;
 
-    setIsSpeaking(true);
-    
-    // Try ResponsiveVoice first (if loaded)
-    if (window.responsiveVoice) {
-      const voiceName = language === 'hi' 
-        ? 'Hindi Female' // Natural Hindi female voice
-        : 'UK English Female'; // Natural English female voice
-      
-      console.log('Using ResponsiveVoice:', voiceName);
-      
-      window.responsiveVoice.speak(cleanText, voiceName, {
-        pitch: 1,
-        rate: 0.9,
-        volume: 1,
-        onend: () => setIsSpeaking(false),
-        onerror: () => {
-          console.error('ResponsiveVoice failed, using fallback');
-          setIsSpeaking(false);
-          fallbackSpeak(cleanText);
-        }
-      });
-    } else {
-      // Fallback to browser TTS
-      console.log('ResponsiveVoice not loaded, using browser TTS');
-      fallbackSpeak(cleanText);
-    }
-  };
+    // Small delay before speaking to feel more natural (like a person breathing or preparing)
+    setTimeout(() => {
+      setIsSpeaking(true);
 
-  // Play audio from URL
-  const playAudio = (url) => {
-    return new Promise((resolve, reject) => {
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = resolve;
-      audio.onerror = reject;
-      audio.play().catch(reject);
-    });
+      // Try ResponsiveVoice first (if loaded)
+      if (window.responsiveVoice) {
+        const voiceName = language === 'hi'
+          ? 'Hindi Female'
+          : 'UK English Female';
+
+        window.responsiveVoice.speak(cleanText, voiceName, {
+          pitch: 1,
+          rate: 0.85, // Slightly slower for better clarity and "human" feel
+          volume: 1,
+          onend: () => setIsSpeaking(false),
+          onerror: () => {
+            console.error('ResponsiveVoice failed, using fallback');
+            setIsSpeaking(false);
+            fallbackSpeak(cleanText);
+          }
+        });
+      } else {
+        // Fallback to browser TTS
+        fallbackSpeak(cleanText);
+      }
+    }, 400); // 400ms delay
   };
 
   // Fallback to browser TTS (female voice)
   const fallbackSpeak = (text) => {
-    const utterance = new SpeechSynthesisUtterance(prepareTextForSpeech(text));
+    const preparedText = prepareTextForSpeech(text);
+    const utterance = new SpeechSynthesisUtterance(preparedText);
     const voice = getBestVoice(language);
-    if (voice) utterance.voice = voice;
-    utterance.rate = language === 'hi' ? 0.8 : 0.85;
-    utterance.pitch = 1.1; // Higher pitch for female voice
+    
+    if (voice) {
+      utterance.voice = voice;
+      // High-quality online voices often have 'Google' in the name
+      if (voice.name.includes('Google') || voice.name.includes('Premium')) {
+        utterance.rate = language === 'hi' ? 0.85 : 0.9;
+      } else {
+        utterance.rate = language === 'hi' ? 0.8 : 0.85;
+      }
+    } else {
+      utterance.rate = 0.85;
+    }
+    
+    utterance.pitch = 1.05; // Slightly above neutral for a pleasant female tone
     const selectedLang = languages.find(l => l.code === language);
     utterance.lang = selectedLang?.speechCode || 'en-IN';
     utterance.onend = () => setIsSpeaking(false);
@@ -340,9 +372,9 @@ function App() {
         });
         setActiveTab("chat");
       } else {
-        setUploadStatus({ 
-          type: "error", 
-          message: data.error || "Upload failed. Make sure it's a text-based PDF." 
+        setUploadStatus({
+          type: "error",
+          message: data.error || "Upload failed. Make sure it's a text-based PDF."
         });
       }
     } catch (error) {
@@ -364,9 +396,10 @@ function App() {
 
     const userMessage = input.trim();
     const wasVoiceInput = fromVoice || voiceInputUsed;
-    
+
     setInput("");
     setVoiceInputUsed(false);
+    setShowInlineBooking(false); // Hide booking calendar when new message is sent
     setMessages((prev) => [...prev, { role: "user", content: userMessage, fromVoice: wasVoiceInput }]);
     setIsLoading(true);
 
@@ -381,7 +414,12 @@ function App() {
 
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.answer },
+        {
+          role: "assistant",
+          content: data.answer,
+          bookingUrl: data.bookingUrl,
+          isBookingResponse: data.isBookingResponse
+        },
       ]);
 
       // Always speak if voice input was used, or if voice is enabled
@@ -486,7 +524,7 @@ function App() {
               <div className="chat-header">
                 <h2>💬 Chat</h2>
                 <div className="header-controls">
-                  <select 
+                  <select
                     className="language-select"
                     value={language}
                     onChange={(e) => {
@@ -501,9 +539,9 @@ function App() {
                       </option>
                     ))}
                   </select>
-                  
+
                   {availableVoices.length > 0 && (
-                    <select 
+                    <select
                       className="voice-select"
                       value={selectedVoice}
                       onChange={(e) => setSelectedVoice(e.target.value)}
@@ -511,8 +549,8 @@ function App() {
                     >
                       <option value="">Auto</option>
                       {availableVoices
-                        .filter(v => language === 'hi' ? 
-                          (v.lang.includes('hi') || v.name.toLowerCase().includes('hindi')) : 
+                        .filter(v => language === 'hi' ?
+                          (v.lang.includes('hi') || v.name.toLowerCase().includes('hindi')) :
                           v.lang.startsWith('en'))
                         .map(voice => (
                           <option key={voice.name} value={voice.name}>
@@ -521,15 +559,15 @@ function App() {
                         ))}
                     </select>
                   )}
-                  
+
                   <div className="voice-controls">
                     {isSpeaking && (
                       <button className="voice-btn stop" onClick={stopSpeaking} title="Stop speaking">
                         ⏹️
                       </button>
                     )}
-                    <button 
-                      className={`voice-btn ${voiceEnabled ? 'active' : ''}`} 
+                    <button
+                      className={`voice-btn ${voiceEnabled ? 'active' : ''}`}
                       onClick={() => setVoiceEnabled(!voiceEnabled)}
                       title={voiceEnabled ? 'Disable voice' : 'Enable voice'}
                     >
@@ -553,9 +591,20 @@ function App() {
                     </div>
                     <div className="message-content">
                       <p>{msg.content}</p>
+                      {msg.isBookingResponse && (
+                        <div className="booking-options">
+                     
+                          <button
+                            className="booking-btn secondary"
+                            onClick={showInlineCalendar}
+                          >
+                            📆 View Calendar
+                          </button>
+                        </div>
+                      )}
                       {msg.role === "assistant" && (
-                        <button 
-                          className="speak-btn" 
+                        <button
+                          className="speak-btn"
                           onClick={() => speakText(msg.content, true)}
                           title="Listen to this message"
                         >
@@ -565,6 +614,29 @@ function App() {
                     </div>
                   </div>
                 ))}
+
+                {/* Inline Booking Calendar */}
+                {showInlineBooking && (
+                  <div className="message assistant">
+                    <div className="message-avatar">📅</div>
+                    <div className="message-content booking-embed-container">
+                      <div className="booking-embed-header">
+                        <span>Select a time slot</span>
+                        <button
+                          className="close-booking-btn"
+                          onClick={() => setShowInlineBooking(false)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div
+                        ref={calEmbedRef}
+                        className="cal-inline-embed"
+                        style={{ width: '100%', minHeight: '400px' }}
+                      />
+                    </div>
+                  </div>
+                )}
                 {isLoading && (
                   <div className="message assistant">
                     <div className="message-avatar">🤖</div>
@@ -578,8 +650,8 @@ function App() {
                 <div ref={messagesEndRef} />
               </div>
               <form className="input-area" onSubmit={sendMessage}>
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className={`mic-btn ${isListening ? 'listening' : ''}`}
                   onClick={toggleListening}
                   disabled={isLoading}

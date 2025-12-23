@@ -7,6 +7,44 @@
     <title>RAG Chatbot</title>
     <!-- ResponsiveVoice - Free, natural TTS -->
     <script src="https://code.responsivevoice.org/responsivevoice.js?key=YOUR_KEY"></script>
+    <!-- Cal.com Embed Script -->
+    <script>
+      (function (C, A, L) {
+        let p = function (a, ar) { a.q.push(ar); };
+        let d = C.document;
+        C.Cal = C.Cal || function () {
+          let cal = C.Cal;
+          let ar = arguments;
+          if (!cal.loaded) {
+            cal.ns = {};
+            cal.q = cal.q || [];
+            d.head.appendChild(d.createElement("script")).src = A;
+            cal.loaded = true;
+          }
+          if (ar[0] === L) {
+            const api = function () { p(api, arguments); };
+            const namespace = ar[1];
+            api.q = api.q || [];
+            if (typeof namespace === "string") {
+              cal.ns[namespace] = cal.ns[namespace] || api;
+              p(cal.ns[namespace], ar);
+              p(cal, ["initNamespace", namespace]);
+            } else p(cal, ar);
+            return;
+          }
+          p(cal, ar);
+        };
+      })(window, "https://app.cal.com/embed/embed.js", "init");
+      Cal("init", "project-discussion", { origin: "https://cal.com" });
+      Cal.ns["project-discussion"]("ui", {
+        "cssVarsPerTheme": {
+          "light": { "cal-brand": "#6366f1" },
+          "dark": { "cal-brand": "#6366f1" }
+        },
+        "hideEventTypeDetails": false,
+        "layout": "month_view"
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>
