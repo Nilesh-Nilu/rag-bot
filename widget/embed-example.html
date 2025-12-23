@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Website with Chatbot</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      line-height: 1.6;
+    }
+    h1 { color: #333; }
+    p { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Welcome to My Website</h1>
+  <p>This is an example website with an embedded AI chatbot in the bottom-right corner.</p>
+  <p>Click the chat button to open the chatbot. You can upload PDFs and ask questions about them!</p>
+  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+  
+  <!-- 
+    ========================================
+    EMBED CODE - Copy this to your website
+    ========================================
+  -->
+  <script>
+    window.ChatbotConfig = {
+      apiUrl: 'http://localhost:3001',
+      botId: 'YOUR_BOT_ID_HERE',  // Replace with your bot ID
+      theme: 'dark',              // 'dark' or 'light'
+      position: 'right'           // 'right' or 'left'
+    };
+  </script>
+  <script src="http://localhost:3001/widget/chatbot.js"></script>
+  <!-- End of embed code -->
+  
+</body>
+</html>
+
