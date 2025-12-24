@@ -185,84 +185,92 @@ function App() {
   // Audio ref for TTS
   const audioRef = useRef(null);
 
-  // Make text more natural for speech
-  const prepareTextForSpeech = (text) => {
-    return text
-      // Replace ellipsis with long pause
-      .replace(/\.\.\./g, '... ')
-      // Add slightly longer pauses for transitions
-      .replace(/(\.|\?|!)\s/g, '$1   ')
-      // Clean up multiple spaces
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
-
-  // Speak text with ResponsiveVoice (free, natural voice)
+  // Speak text with Edge TTS / System TTS (more natural)
   const speakText = async (text, forceSpeak = false) => {
     if ((!voiceEnabled && !forceSpeak) || !text) return;
-
-    // Stop any ongoing speech
+    
     stopSpeaking();
-
-    // Clean text for TTS
+    
     const cleanText = text
-      .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
       .replace(/[*_~`#]/g, '')
+      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
       .trim();
-
+      
     if (!cleanText) return;
-
-    // Small delay before speaking to feel more natural (like a person breathing or preparing)
-    setTimeout(() => {
-      setIsSpeaking(true);
-
-      // Try ResponsiveVoice first (if loaded)
-      if (window.responsiveVoice) {
-        const voiceName = language === 'hi'
-          ? 'Hindi Female'
-          : 'UK English Female';
-
-        window.responsiveVoice.speak(cleanText, voiceName, {
-          pitch: 1,
-          rate: 0.85, // Slightly slower for better clarity and "human" feel
-          volume: 1,
-          onend: () => setIsSpeaking(false),
-          onerror: () => {
-            console.error('ResponsiveVoice failed, using fallback');
-            setIsSpeaking(false);
-            fallbackSpeak(cleanText);
-          }
-        });
-      } else {
-        // Fallback to browser TTS
-        fallbackSpeak(cleanText);
-      }
-    }, 400); // 400ms delay
-  };
-
-  // Fallback to browser TTS (female voice)
-  const fallbackSpeak = (text) => {
-    const preparedText = prepareTextForSpeech(text);
-    const utterance = new SpeechSynthesisUtterance(preparedText);
-    const voice = getBestVoice(language);
     
-    if (voice) {
-      utterance.voice = voice;
-      // High-quality online voices often have 'Google' in the name
-      if (voice.name.includes('Google') || voice.name.includes('Premium')) {
-        utterance.rate = language === 'hi' ? 0.85 : 0.9;
-      } else {
-        utterance.rate = language === 'hi' ? 0.8 : 0.85;
+    setIsSpeaking(true);
+    
+    try {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      
+      // Voice mapping for better quality
+      const voiceMap = {
+        'en': { 
+          preferredVoices: ['Samantha', 'Microsoft Zira', 'Google US English', 'Karen', 'Victoria', 'Fiona'],
+          rate: 0.9, 
+          pitch: 1.0 
+        },
+        'hi': { 
+          preferredVoices: ['Microsoft Hemant', 'Lekha', 'Google हिन्दी', 'Hindi'],
+          rate: 0.85, 
+          pitch: 1.0 
+        }
+      };
+      
+      const settings = voiceMap[language] || voiceMap['en'];
+      utterance.rate = settings.rate;
+      utterance.pitch = settings.pitch;
+      utterance.lang = language === 'hi' ? 'hi-IN' : 'en-US';
+      
+      // Try to find the best voice
+      const voices = speechSynthesis.getVoices();
+      let preferredVoice = null;
+      
+      // First try user-selected voice
+      if (selectedVoice) {
+        preferredVoice = voices.find(v => v.name === selectedVoice);
       }
-    } else {
-      utterance.rate = 0.85;
+      
+      // Then try preferred voices list
+      if (!preferredVoice) {
+        for (const voiceName of settings.preferredVoices) {
+          preferredVoice = voices.find(v => 
+            v.name.includes(voiceName) || 
+            v.name.toLowerCase().includes(voiceName.toLowerCase())
+          );
+          if (preferredVoice) break;
+        }
+      }
+      
+      // Fallback to any matching language voice
+      if (!preferredVoice) {
+        preferredVoice = voices.find(v => 
+          language === 'hi' ? v.lang.includes('hi') : v.lang.includes('en')
+        );
+      }
+      
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+        console.log('Using voice:', preferredVoice.name);
+      }
+      
+      // Add natural pauses between sentences
+      utterance.text = cleanText
+        .replace(/\. /g, '.   ')
+        .replace(/\? /g, '?   ')
+        .replace(/! /g, '!   ')
+        .replace(/\.\.\./g, '......   ');
+      
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      
+      // Small delay for natural feel
+      setTimeout(() => speechSynthesis.speak(utterance), 300);
+      
+    } catch (error) {
+      console.error('TTS error:', error);
+      setIsSpeaking(false);
     }
-    
-    utterance.pitch = 1.05; // Slightly above neutral for a pleasant female tone
-    const selectedLang = languages.find(l => l.code === language);
-    utterance.lang = selectedLang?.speechCode || 'en-IN';
-    utterance.onend = () => setIsSpeaking(false);
-    speechSynthesis.speak(utterance);
   };
 
   // Stop speaking

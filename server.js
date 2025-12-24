@@ -17,10 +17,13 @@ const app = express();
 // Cal.com booking link for scheduling appointments
 const BOOKING_URL = "https://cal.com/nilu-tudu-l68h0q/project-discussion?overlayCalendar=true";
 
-// Keywords that indicate booking intent
+// Keywords that indicate booking/contact intent
 const BOOKING_KEYWORDS = [
-  'book', 'booking', 'schedule', 'appointment', 'meeting', 'call', 'consultation',
-  'बुक', 'बुकिंग', 'अपॉइंटमेंट', 'मीटिंग', 'शेड्यूल', 'कॉल'
+  'book', 'booking', 'schedule', 'appointment', 'meeting', 'consultation',
+  'talk to someone', 'speak to someone', 'contact', 'reach out', 'get in touch',
+  'talk to team', 'speak with', 'call back', 'callback', 'connect with',
+  'बुक', 'बुकिंग', 'अपॉइंटमेंट', 'मीटिंग', 'शेड्यूल', 'कॉल',
+  'बात करना', 'संपर्क', 'टीम से बात'
 ];
 app.use(cors());
 app.use(express.json());
@@ -151,11 +154,21 @@ app.post("/api/bots/:botId/chat", async (req, res) => {
       return res.status(400).json({ error: "Message is required" });
     }
 
-    // Check for booking intent
+    // Check for booking/contact intent
     if (hasBookingIntent(message)) {
       const bookingResponse = language === 'hi'
-        ? `बिल्कुल! आप नीचे दिए गए लिंक से अपॉइंटमेंट बुक कर सकते हैं। हमारी टीम जल्द ही आपसे संपर्क करेगी।`
-        : `Absolutely! You can schedule an appointment using the link below. Our team will get in touch with you soon.`;
+        ? `जी बिल्कुल! आप हमसे सीधे संपर्क कर सकते हैं:
+
+📞 फोन: +91-9110176498 / +91-8800869961
+📧 ईमेल: contactus@murmusoftwareinfotech.com
+
+या फिर नीचे बटन से कॉल शेड्यूल करें - हमारी टीम आपसे जल्द संपर्क करेगी!`
+        : `Of course! Here's how you can reach us directly:
+
+📞 Phone: +91-9110176498 / +91-8800869961
+📧 Email: contactus@murmusoftwareinfotech.com
+
+Or you can schedule a call using the button below - our team will get back to you!`;
       
       return res.json({
         answer: bookingResponse,
