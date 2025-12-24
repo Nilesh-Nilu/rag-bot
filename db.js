@@ -260,3 +260,114 @@ export function getBookingsByDateRange(botId, startDate, endDate) {
     );
   });
 }
+
+// ============ MCP-LIKE BOOKING LOOKUP ============
+
+// Normalize phone number - extract 10 digit Indian mobile number
+function normalizePhone(phone) {
+  // Remove all non-digits
+  let digits = phone.replace(/\D/g, '');
+  
+  // If starts with 91 and has 12 digits, remove 91 (country code)
+  if (digits.length === 12 && digits.startsWith('91')) {
+    digits = digits.substring(2);
+  }
+  // If starts with 0 and has 11 digits, remove 0
+  else if (digits.length === 11 && digits.startsWith('0')) {
+    digits = digits.substring(1);
+  }
+  
+  // Return last 10 digits if longer, or full number if 10 or less
+  if (digits.length > 10) {
+    return digits.slice(-10);
+  }
+  
+  return digits;
+}
+
+// Search bookings by phone number
+export function getBookingsByPhone(phone) {
+  return new Promise((resolve, reject) => {
+    const normalizedPhone = normalizePhone(phone);
+    
+    console.log(`🔍 Searching bookings for phone: ${phone} → normalized: ${normalizedPhone}`);
+    
+    // Search with exact match on last 10 digits
+    db.all(
+      `SELECT * FROM bookings 
+       WHERE phone LIKE ? OR phone LIKE ? OR phone LIKE ? OR phone LIKE ?
+       ORDER BY created_at DESC`,
+      [
+        `%${normalizedPhone}`,           // ends with this number
+        `%${normalizedPhone}%`,          // contains this number
+        `+91${normalizedPhone}`,         // with +91 prefix
+        `91${normalizedPhone}`           // with 91 prefix
+      ],
+      (err, rows) => {
+        if (err) reject(err);
+        console.log(`📋 Found ${rows?.length || 0} bookings`);
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+// Search bookings by email
+export function getBookingsByEmail(email) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT * FROM bookings 
+       WHERE LOWER(email) = LOWER(?)
+       ORDER BY created_at DESC`,
+      [email],
+      (err, rows) => {
+        if (err) reject(err);
+        resolve(rows || []);
+      }
+    );
+  });
+}
+
+// Get booking by phone and name (more specific lookup)
+export function findBooking(phone, name = null) {
+  return new Promise((resolve, reject) => {
+    const normalizedPhone = normalizePhone(phone);
+    
+    let query = `SELECT * FROM bookings WHERE (phone LIKE ? OR phone LIKE ? OR phone LIKE ?)`;
+    const params = [`%${normalizedPhone}`, `+91${normalizedPhone}`, `91${normalizedPhone}`];
+    
+    if (name) {
+      query += ` AND LOWER(full_name) LIKE LOWER(?)`;
+      params.push(`%${name}%`);
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT 1`;
+    
+    db.get(query, params, (err, row) => {
+      if (err) reject(err);
+      resolve(row);
+    });
+  });
+}
+
+// Cancel booking by phone
+export function cancelBookingByPhone(phone) {
+  return new Promise((resolve, reject) => {
+    const normalizedPhone = normalizePhone(phone);
+    
+    console.log(`❌ Cancelling booking for phone: ${phone} → normalized: ${normalizedPhone}`);
+    
+    db.run(
+      `UPDATE bookings 
+       SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP 
+       WHERE (phone LIKE ? OR phone LIKE ? OR phone LIKE ?)
+       AND status = 'pending'`,
+      [`%${normalizedPhone}`, `+91${normalizedPhone}`, `91${normalizedPhone}`],
+      function (err) {
+        if (err) reject(err);
+        console.log(`📋 Cancelled ${this.changes} bookings`);
+        resolve(this.changes);
+      }
+    );
+  });
+}

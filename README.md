@@ -1,6 +1,17 @@
 # 🤖 RAG Chatbot SaaS Platform
 
-A complete **Retrieval-Augmented Generation (RAG)** chatbot system that answers questions based **only** on uploaded PDF documents. Built with Node.js, SQLite, React, and Ollama (Llama 3.1).
+A complete **Retrieval-Augmented Generation (RAG)** chatbot system with **voice support**, **appointment booking**, and **multilingual capabilities**. Built for businesses to create AI assistants that answer questions based on uploaded PDF documents.
+
+---
+
+## ✨ Key Features
+
+- 📄 **Document-Based AI** - Answers only from uploaded PDFs (no hallucination)
+- 🗣️ **Voice Support** - Speech-to-text input & text-to-speech responses
+- 🌐 **Multilingual** - English & Hindi support with natural voices
+- 📅 **Appointment Booking** - Integrated Cal.com scheduling
+- 🏢 **Multi-Tenant SaaS** - Each customer gets isolated data
+- 🔌 **Embeddable Widget** - Add chatbot to any website with one script
 
 ---
 
@@ -9,7 +20,7 @@ A complete **Retrieval-Augmented Generation (RAG)** chatbot system that answers 
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/Nilesh-Nilu/rag-bot.git
+git clone https://github.com/your-repo/rag-bot.git
 cd rag-bot
 
 # Install backend dependencies
@@ -24,8 +35,6 @@ cd chatbot-ui && npm install && cd ..
 Create a `.env` file in the root directory:
 
 ```env
-API_URL=http://213.210.37.56:8080
-API_TOKEN=your_ollama_bearer_token
 PORT=3001
 ```
 
@@ -48,35 +57,161 @@ cd chatbot-ui && npm run dev
 
 ```
 rag-bot/
-├── server.js           # Express API server (main backend)
-├── db.js               # SQLite database operations
-├── pdf.js              # PDF text extraction & chunking
+├── server.js           # Express API server with booking & contact detection
+├── db.js               # SQLite database (bots, documents, bookings)
+├── pdf.js              # PDF/DOCX text extraction & chunking
 ├── embedding.js        # Text vectorization (TF-IDF)
-├── rag.js              # LLM answer generation via Ollama
+├── rag.js              # LLM answer generation with natural language
 ├── package.json        # Backend dependencies
-├── .env                # API credentials (Ollama server)
+├── .env                # Environment configuration
 ├── rag.db              # SQLite database file
-├── uploads/            # Temporary PDF upload storage
+├── uploads/            # Temporary file upload storage
+├── docs/               # Sample documents
 ├── widget/             # Embeddable chat widget
 │   ├── chatbot.js      # Self-contained widget script
 │   └── embed-example.html
 └── chatbot-ui/         # React admin dashboard
     ├── src/
-    │   ├── App.jsx     # Main React component
-    │   └── App.css     # Styling
+    │   ├── App.jsx     # Main React component with voice & booking
+    │   ├── App.css     # Dark theme styling
+    │   └── main.jsx    # React entry point
+    ├── index.html      # Cal.com embed script included
     └── package.json
 ```
 
 ---
 
-## 🔄 How It Works
+## 🔧 Backend API
 
-### High-Level Flow
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/bots` | Create a new bot |
+| `GET` | `/api/bots/:botId` | Get bot info & document count |
+| `POST` | `/api/bots/:botId/upload` | Upload PDF/DOCX file |
+| `POST` | `/api/bots/:botId/chat` | Send message, get AI response |
+| `GET` | `/api/booking-url` | Get Cal.com booking URL |
+| `GET` | `/api/health` | Health check |
+
+### Chat Request
+
+```bash
+POST /api/bots/:botId/chat
+Content-Type: application/json
+
+{
+  "message": "What services do you offer?",
+  "language": "en"  # or "hi" for Hindi
+}
+```
+
+### Response with Booking
+
+When user asks to talk/contact/book:
+
+```json
+{
+  "answer": "Here's how you can reach us:\n📞 Phone: +91-9110176498\n📧 Email: contactus@example.com",
+  "isBookingResponse": true,
+  "bookingUrl": "https://cal.com/your-link"
+}
+```
+
+---
+
+## 📊 Database Schema
+
+### Tables
+
+```sql
+-- Bots (multi-tenant)
+CREATE TABLE bots (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  website TEXT,
+  created_at DATETIME
+);
+
+-- Document chunks
+CREATE TABLE documents (
+  id INTEGER PRIMARY KEY,
+  bot_id TEXT,
+  chunk_text TEXT,
+  term_freq TEXT,
+  source_file TEXT,
+  created_at DATETIME
+);
+
+-- Appointment bookings
+CREATE TABLE bookings (
+  id TEXT PRIMARY KEY,
+  bot_id TEXT,
+  full_name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  service TEXT NOT NULL,
+  preferred_date DATE NOT NULL,
+  preferred_time TEXT NOT NULL,
+  notes TEXT,
+  status TEXT DEFAULT 'pending',
+  created_at DATETIME,
+  updated_at DATETIME
+);
+```
+
+---
+
+## 🗣️ Voice & Language Features
+
+### Supported Languages
+
+| Language | Code | Voice | Speech Recognition |
+|----------|------|-------|-------------------|
+| English | `en` | Samantha, Microsoft Zira, Google US | `en-IN` |
+| Hindi | `hi` | Lekha, Microsoft Hemant | `hi-IN` |
+
+### Natural Conversation Style
+
+The chatbot uses warm, human-like responses:
+- Uses contractions ("I'm", "don't", "it's")
+- Adds natural phrases ("Well, let me see...", "That's a great question!")
+- Feminine grammar for Hindi ("सकती हूं", "करूंगी")
+
+---
+
+## 📅 Booking Integration
+
+### Cal.com Setup
+
+The chatbot integrates with Cal.com for appointment scheduling. Update in `server.js`:
+
+```javascript
+const BOOKING_URL = "https://cal.com/your-username/meeting-type";
+```
+
+### Booking Triggers
+
+The chatbot shows booking options when users say:
+- "book an appointment"
+- "schedule a meeting"
+- "I want to talk to someone"
+- "contact the team"
+- "बात करना चाहता हूं" (Hindi)
+
+### Response Includes
+
+1. **Direct Contact Info** - Phone numbers & email
+2. **Booking Button** - Opens Cal.com calendar inline
+
+---
+
+## 🔄 How RAG Works
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │  Upload PDF │ ──▶ │  Extract &  │ ──▶ │  Store in   │
-│             │     │  Chunk Text │     │  SQLite DB  │
+│  or DOCX    │     │  Chunk Text │     │  SQLite DB  │
 └─────────────┘     └─────────────┘     └─────────────┘
                                               │
                                               ▼
@@ -85,199 +220,27 @@ rag-bot/
 │   Answer    │     │  via LLM    │     │  Relevant   │
 └─────────────┘     └─────────────┘     │   Chunks    │
                                         └─────────────┘
-                                              ▲
-                                              │
-                                    ┌─────────────┐
-                                    │ User Query  │
-                                    └─────────────┘
 ```
 
----
-
-## 🔧 Backend Components
-
-### 1. `server.js` - Express API Server
-
-The main entry point that handles all HTTP requests.
-
-**Endpoints:**
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/bots` | Create a new bot (multi-tenant) |
-| `GET` | `/api/bots/:botId` | Get bot info & document count |
-| `POST` | `/api/bots/:botId/upload` | Upload & process PDF |
-| `POST` | `/api/bots/:botId/chat` | Send message, get AI response |
-| `GET` | `/api/health` | Health check |
-
-**Key Features:**
-- CORS enabled for cross-origin requests
-- Multer for file upload handling (10MB limit)
-- Serves static widget files from `/widget`
+1. **Upload** - PDF/DOCX extracted to text
+2. **Chunk** - Split into ~800 char segments with overlap
+3. **Index** - Convert to TF-IDF vectors, store in SQLite
+4. **Query** - User question → find similar chunks
+5. **Generate** - LLM answers using only retrieved context
 
 ---
 
-### 2. `db.js` - SQLite Database
+## 🔌 Embed Widget
 
-Multi-tenant database schema for SaaS support.
+Add the chatbot to any website:
 
-**Tables:**
-
-```sql
--- Each customer/website gets a bot
-CREATE TABLE bots (
-  id TEXT PRIMARY KEY,          -- UUID
-  name TEXT,
-  website TEXT,
-  created_at DATETIME
-);
-
--- Document chunks linked to bots
-CREATE TABLE documents (
-  id INTEGER PRIMARY KEY,
-  bot_id TEXT,                  -- Foreign key to bots
-  chunk_text TEXT,              -- The actual text chunk
-  term_freq TEXT,               -- JSON: word frequency map
-  source_file TEXT,             -- Original filename
-  created_at DATETIME
-);
-```
-
-**Functions:**
-- `createBot(name, website)` → Returns new bot UUID
-- `insertChunk(botId, text, termFreq, filename)` → Store chunk
-- `searchSimilar(botId, queryTermFreq, limit)` → Find relevant chunks
-- `clearBotDocuments(botId)` → Delete all docs for a bot
-
----
-
-### 3. `pdf.js` - PDF Processing
-
-**Text Extraction:**
-```javascript
-import pdfParse from "pdf-parse";
-
-export async function extractPdfText(path) {
-  const buffer = fs.readFileSync(path);
-  const data = await pdfParse(buffer);
-  return data.text;  // Plain text from PDF
-}
-```
-
-**Chunking Strategy:**
-```javascript
-export function chunkText(text, chunkSize = 800, overlap = 100) {
-  // Split text into overlapping chunks
-  // - chunkSize: ~800 characters per chunk
-  // - overlap: 100 chars overlap between chunks
-  // This ensures context isn't lost at boundaries
-}
-```
-
-**Why Chunking?**
-- LLMs have context limits
-- Smaller chunks = more precise retrieval
-- Overlap prevents losing context at boundaries
-
----
-
-### 4. `embedding.js` - Text Vectorization
-
-Uses **TF-IDF** (Term Frequency) for text similarity since no embedding model is available on the server.
-
-```javascript
-// Convert text to word frequency map
-export function getTextVector(text) {
-  const tokens = tokenize(text);  // lowercase, remove punctuation
-  return termFrequency(tokens);   // { word: count, ... }
-}
-
-// Calculate similarity between two texts
-export function cosineSimilarity(vec1, vec2) {
-  // Cosine similarity formula
-  // Returns 0-1 (1 = identical)
-}
-```
-
-**How Search Works:**
-1. User query → Convert to term frequency vector
-2. Compare with all stored chunk vectors
-3. Sort by similarity score
-4. Return top 5 most relevant chunks
-
----
-
-### 5. `rag.js` - Answer Generation
-
-Sends context + question to Ollama LLM.
-
-```javascript
-export async function generateAnswer(question, context) {
-  const prompt = `
-You are a document-based AI assistant.
-
-RULES:
-1. ONLY answer using the provided context
-2. If info not in context, say "I don't have that information"
-3. Do NOT use external knowledge
-
-CONTEXT:
-${context}
-
-QUESTION: ${question}
-`;
-
-  const response = await axios.post(`${API_URL}/ollama/api/generate`, {
-    model: "llama3.1:8b",
-    prompt,
-    stream: false
-  }, {
-    headers: { Authorization: `Bearer ${TOKEN}` }
-  });
-
-  return response.data.response;
-}
-```
-
----
-
-## 🎨 Frontend Components
-
-### 1. `chatbot-ui/` - React Admin Dashboard
-
-A full admin interface for managing the chatbot.
-
-**Features:**
-- 🔐 Bot creation & management
-- 📤 Drag & drop PDF upload
-- 💬 Chat interface with typing indicators
-- 🔗 Embed code generator
-
-**Tabs:**
-1. **Chat** - Test the chatbot
-2. **Upload PDF** - Add documents to knowledge base
-3. **Embed Code** - Get code to add widget to any website
-
----
-
-### 2. `widget/chatbot.js` - Embeddable Widget
-
-A self-contained JavaScript file that creates a chat widget on any website.
-
-**Features:**
-- 💬 Floating chat bubble (bottom-right)
-- 📤 Built-in PDF upload
-- 🌙 Dark/Light theme support
-- 📱 Mobile responsive
-
-**How to Embed:**
 ```html
 <script>
   window.ChatbotConfig = {
     apiUrl: 'https://your-api.com',
     botId: 'your-bot-id-here',
-    theme: 'dark',      // 'dark' or 'light'
-    position: 'right'   // 'right' or 'left'
+    theme: 'dark',
+    position: 'right'
   };
 </script>
 <script src="https://your-api.com/widget/chatbot.js"></script>
@@ -285,210 +248,55 @@ A self-contained JavaScript file that creates a chat widget on any website.
 
 ---
 
-## 🔄 Complete Request Flow
-
-### PDF Upload Flow
-
-```
-1. User drops PDF in upload zone
-         │
-         ▼
-2. Frontend sends POST /api/bots/:botId/upload
-   with FormData containing PDF file
-         │
-         ▼
-3. Multer saves file to ./uploads/
-         │
-         ▼
-4. pdf.js extracts text using pdf-parse
-         │
-         ▼
-5. Text split into ~800 char chunks with overlap
-         │
-         ▼
-6. Each chunk → getTextVector() → term frequency map
-         │
-         ▼
-7. Chunks + vectors stored in SQLite (documents table)
-         │
-         ▼
-8. Temp file deleted, success response sent
-```
-
-### Chat Query Flow
-
-```
-1. User types question in chat
-         │
-         ▼
-2. Frontend sends POST /api/bots/:botId/chat
-   { message: "What are the operating hours?" }
-         │
-         ▼
-3. Query → getTextVector() → term frequency map
-         │
-         ▼
-4. searchSimilar() compares query vector
-   with all document chunk vectors
-         │
-         ▼
-5. Top 5 most similar chunks retrieved
-         │
-         ▼
-6. Chunks combined as context string
-         │
-         ▼
-7. Context + Question → Ollama LLM (llama3.1:8b)
-         │
-         ▼
-8. LLM generates answer using ONLY the context
-         │
-         ▼
-9. Answer returned to frontend
-```
-
----
-
 ## 🛠️ Configuration
 
-### Environment Variables (`.env`)
+### Environment Variables
 
-```env
-API_URL=http://213.210.37.56:8080
-API_TOKEN=your_ollama_bearer_token
-PORT=3001  # Optional, defaults to 3001
-```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `3001` |
 
 ### Key Settings
 
 | Setting | Location | Default | Description |
 |---------|----------|---------|-------------|
-| Chunk Size | `pdf.js` | 800 chars | Size of text chunks |
+| Chunk Size | `pdf.js` | 800 chars | Text chunk size |
 | Chunk Overlap | `pdf.js` | 100 chars | Overlap between chunks |
-| Search Limit | `db.js` | 5 | Number of chunks to retrieve |
-| Max File Size | `server.js` | 10MB | PDF upload limit |
-| LLM Model | `rag.js` | llama3.1:8b | Ollama model to use |
+| Search Limit | `db.js` | 5 | Chunks to retrieve |
+| Max File Size | `server.js` | 10MB | Upload limit |
+| LLM Model | `rag.js` | llama3.1:8b | Ollama model |
+| Booking URL | `server.js` | Cal.com link | Scheduling calendar |
 
 ---
 
-## 🚀 Running the Project
+## 📝 Supported File Types
 
-### Prerequisites
-- Node.js 18+
-- Access to Ollama server (or local Ollama)
-
-### Start Backend
-```bash
-cd rag-bot
-npm install
-npm run server
-# Runs on http://localhost:3001
-```
-
-### Start Frontend
-```bash
-cd chatbot-ui
-npm install
-npm run dev
-# Runs on http://localhost:5173
-```
+- ✅ PDF (text-based)
+- ✅ DOCX (Word documents)
+- ❌ Scanned PDFs (need OCR)
+- ❌ Images
 
 ---
 
-## 📊 API Reference
+## 🔒 Security
 
-### Create Bot
-```bash
-POST /api/bots
-Content-Type: application/json
-
-{ "name": "My Bot", "website": "https://example.com" }
-
-# Response
-{ "botId": "uuid-here", "message": "Bot created successfully" }
-```
-
-### Upload PDF
-```bash
-POST /api/bots/:botId/upload
-Content-Type: multipart/form-data
-
-pdf: [file]
-
-# Response
-{
-  "success": true,
-  "filename": "document.pdf",
-  "chunks": 15,
-  "characters": 12000
-}
-```
-
-### Chat
-```bash
-POST /api/bots/:botId/chat
-Content-Type: application/json
-
-{ "message": "What is the refund policy?" }
-
-# Response
-{ "answer": "According to the document...", "sources": 5 }
-```
-
----
-
-## 🔒 Security Considerations
-
-1. **API Token** - Store in `.env`, never commit to git
+1. **Bot Isolation** - Each bot only sees its own documents
 2. **CORS** - Configure allowed origins for production
-3. **File Validation** - Only PDF files accepted
-4. **Bot Isolation** - Each bot only sees its own documents
+3. **File Validation** - Only PDF/DOCX accepted
+4. **No Data Leakage** - LLM answers only from uploaded documents
 
 ---
 
-## 🎯 SaaS Multi-Tenancy
+## 🚀 Production Deployment
 
-The system supports multiple customers (bots) with isolated data:
-
-```
-Customer A (Bot ID: abc-123)
-  └── Documents only visible to Bot abc-123
-
-Customer B (Bot ID: xyz-789)
-  └── Documents only visible to Bot xyz-789
-```
-
-Each customer gets:
-- Unique Bot ID
-- Isolated document storage
-- Separate embed code
-- Independent chat history
-
----
-
-## 📝 Limitations
-
-1. **Text PDFs Only** - Scanned/image PDFs not supported (need OCR)
-2. **No Persistent Chat** - Conversations not saved
-3. **Single File Upload** - One PDF at a time (can upload multiple sequentially)
-4. **TF-IDF Search** - Works well but semantic embeddings would be better
-
----
-
-## 🔮 Future Improvements
-
-- [ ] Add OCR for scanned PDFs (Tesseract)
-- [ ] Use vector embeddings (nomic-embed-text)
-- [ ] Chat history persistence
-- [ ] Multiple file upload
-- [ ] User authentication
-- [ ] Usage analytics dashboard
-- [ ] Rate limiting
-- [ ] Webhook notifications
+1. Update `API_URL` in frontend
+2. Configure CORS origins in `server.js`
+3. Set up SSL/HTTPS
+4. Use process manager (PM2)
+5. Configure Cal.com webhook for booking notifications
 
 ---
 
 ## 📄 License
 
-MIT License - Feel free to use for any purpose.
-
+MIT License - Free for commercial and personal use.

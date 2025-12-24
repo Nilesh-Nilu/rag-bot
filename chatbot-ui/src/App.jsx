@@ -20,27 +20,26 @@ function App() {
   const [selectedVoice, setSelectedVoice] = useState('');
   const [language, setLanguage] = useState('en'); // 'en' for English, 'hi' for Hindi
   const [showInlineBooking, setShowInlineBooking] = useState(false);
+  const [showBookingForm, setShowBookingForm] = useState(false);
+  const [bookingForm, setBookingForm] = useState({
+    fullName: '',
+    phone: '',
+    email: '',
+    service: 'Project Discussion',
+    preferredDate: '',
+    preferredTime: '',
+    notes: ''
+  });
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const calEmbedRef = useRef(null);
 
-  // Open Cal.com modal
-  const openCalModal = () => {
-    if (window.Cal) {
-      window.Cal.ns["project-discussion"]("modal", {
-        calLink: CAL_LINK,
-        config: {
-          layout: "month_view",
-          theme: "dark"
-        }
-      });
-    }
-  };
-
   // Show inline booking calendar
   const showInlineCalendar = () => {
     setShowInlineBooking(true);
+    setShowBookingForm(false);
     // Initialize inline embed after state update
     setTimeout(() => {
       if (window.Cal && calEmbedRef.current) {
@@ -54,6 +53,87 @@ function App() {
         });
       }
     }, 100);
+  };
+
+  // Show custom booking form
+  const showCustomBookingForm = () => {
+    setShowBookingForm(true);
+    setShowInlineBooking(false);
+    // Set default date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setBookingForm(prev => ({
+      ...prev,
+      preferredDate: tomorrow.toISOString().split('T')[0]
+    }));
+  };
+
+  // Handle booking form input change
+  const handleBookingInputChange = (e) => {
+    const { name, value } = e.target;
+    setBookingForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Submit booking form
+  const submitBooking = async (e) => {
+    e.preventDefault();
+    
+    // Validation
+    if (!bookingForm.fullName || !bookingForm.phone || !bookingForm.email || 
+        !bookingForm.preferredDate || !bookingForm.preferredTime) {
+      const errorMsg = language === 'hi' 
+        ? 'कृपया सभी आवश्यक फ़ील्ड भरें।'
+        : 'Please fill all required fields.';
+      setMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
+      return;
+    }
+
+    setBookingSubmitting(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/bots/${botId}/bookings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bookingForm)
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const successMsg = language === 'hi'
+          ? `🎉 बुकिंग सफल!\n\nआपकी बुकिंग कन्फर्म हो गई है:\n👤 ${bookingForm.fullName}\n📞 ${bookingForm.phone}\n📅 ${bookingForm.preferredDate}\n⏰ ${bookingForm.preferredTime}\n\nहमारी टीम जल्द ही आपसे संपर्क करेगी!`
+          : `🎉 Booking Successful!\n\nYour appointment is confirmed:\n👤 ${bookingForm.fullName}\n📞 ${bookingForm.phone}\n📅 ${bookingForm.preferredDate}\n⏰ ${bookingForm.preferredTime}\n\nOur team will contact you soon!`;
+        
+        setMessages(prev => [...prev, { role: 'assistant', content: successMsg }]);
+        setShowBookingForm(false);
+        
+        // Reset form
+        setBookingForm({
+          fullName: '',
+          phone: '',
+          email: '',
+          service: 'Project Discussion',
+          preferredDate: '',
+          preferredTime: '',
+          notes: ''
+        });
+
+        // Speak success message
+        if (voiceEnabled) {
+          speakText(language === 'hi' ? 'बुकिंग सफल! हमारी टीम जल्द ही आपसे संपर्क करेगी।' : 'Booking successful! Our team will contact you soon.');
+        }
+      } else {
+        throw new Error(data.error || 'Booking failed');
+      }
+    } catch (error) {
+      console.error('Booking error:', error);
+      const errorMsg = language === 'hi'
+        ? 'बुकिंग में समस्या हुई। कृपया पुनः प्रयास करें।'
+        : 'Booking failed. Please try again.';
+      setMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
+    } finally {
+      setBookingSubmitting(false);
+    }
   };
 
   // Language options (male Indian voices)
@@ -99,21 +179,44 @@ function App() {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      recognitionRef.current.continuous = true; // Keep listening for longer phrases
+      recognitionRef.current.interimResults = true; // Show interim results
+      recognitionRef.current.maxAlternatives = 3; // Get multiple alternatives
 
       // Set language based on selection
       const selectedLang = languages.find(l => l.code === language);
       recognitionRef.current.lang = selectedLang?.speechCode || 'en-IN';
 
       recognitionRef.current.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(transcript);
-        setVoiceInputUsed(true); // Mark that voice was used
-        setIsListening(false);
+        let finalTranscript = '';
+        let interimTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        
+        // Show interim results while speaking
+        if (interimTranscript) {
+          setInput(interimTranscript);
+        }
+        
+        // When we have final result, process it
+        if (finalTranscript) {
+          console.log('🎤 Voice input (final):', finalTranscript);
+          setInput(finalTranscript.trim());
+          setVoiceInputUsed(true);
+          setIsListening(false);
+          recognitionRef.current.stop();
+        }
       };
 
-      recognitionRef.current.onerror = () => {
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
         setIsListening(false);
       };
 
@@ -122,65 +225,6 @@ function App() {
       };
     }
   }, [language]);
-
-  // Get best voice based on language (female voices)
-  const getBestVoice = (lang) => {
-    const voices = availableVoices.length > 0 ? availableVoices : speechSynthesis.getVoices();
-
-    // If user selected a voice, use that
-    if (selectedVoice) {
-      const voice = voices.find(v => v.name === selectedVoice);
-      if (voice) {
-        console.log('Using selected voice:', voice.name);
-        return voice;
-      }
-    }
-
-    console.log('Looking for voice for language:', lang);
-
-    if (lang === 'hi') {
-      // Hindi female voices
-      const hindiVoice = voices.find(v =>
-        v.lang === 'hi-IN' ||
-        v.lang === 'hi' ||
-        v.name.toLowerCase().includes('hindi') ||
-        v.name.includes('हिंदी') ||
-        v.name.toLowerCase().includes('lekha') ||
-        v.name.toLowerCase().includes('swara')
-      );
-
-      if (hindiVoice) {
-        console.log('Found Hindi voice:', hindiVoice.name);
-        return hindiVoice;
-      } else {
-        console.warn('No Hindi voice found!');
-        alert('No Hindi voice found on your device. Please install Hindi voices in System Settings.');
-      }
-    }
-
-    // English - prefer female voices
-    const femaleNames = ['Samantha', 'Victoria', 'Karen', 'Fiona', 'Moira', 'Tessa', 'Female', 'Veena', 'Lekha', 'Siri'];
-
-    // Find female voice
-    for (const name of femaleNames) {
-      const voice = voices.find(v => v.name.includes(name));
-      if (voice) {
-        console.log('Selected female voice:', voice.name);
-        return voice;
-      }
-    }
-
-    // Find any English female voice
-    const englishVoices = voices.filter(v => v.lang.startsWith('en'));
-    if (englishVoices.length > 0) {
-      console.log('Selected first English voice:', englishVoices[0].name);
-      return englishVoices[0];
-    }
-
-    // Fallback
-    console.log('Using fallback voice:', voices[0]?.name);
-    return voices[0];
-  };
 
   // Audio ref for TTS
   const audioRef = useRef(null);
@@ -293,7 +337,7 @@ function App() {
   // Toggle voice listening
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert('Speech recognition not supported in your browser');
+      alert('Speech recognition not supported in your browser. Please use Chrome or Edge.');
       return;
     }
 
@@ -301,9 +345,33 @@ function App() {
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
+      setInput(''); // Clear previous input
       setVoiceInputUsed(false);
-      recognitionRef.current.start();
-      setIsListening(true);
+      
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+        
+        // Auto-stop after 10 seconds if no speech detected
+        setTimeout(() => {
+          if (isListening && recognitionRef.current) {
+            recognitionRef.current.stop();
+            setIsListening(false);
+          }
+        }, 10000);
+      } catch (error) {
+        console.error('Failed to start speech recognition:', error);
+        // Recognition might already be running, try to stop and restart
+        try {
+          recognitionRef.current.stop();
+          setTimeout(() => {
+            recognitionRef.current.start();
+            setIsListening(true);
+          }, 100);
+        } catch (e) {
+          console.error('Could not restart recognition:', e);
+        }
+      }
     }
   };
 
@@ -601,12 +669,17 @@ function App() {
                       <p>{msg.content}</p>
                       {msg.isBookingResponse && (
                         <div className="booking-options">
-                     
+                          <button
+                            className="booking-btn"
+                            onClick={showCustomBookingForm}
+                          >
+                            📝 {language === 'hi' ? 'फॉर्म भरें' : 'Quick Book'}
+                          </button>
                           <button
                             className="booking-btn secondary"
                             onClick={showInlineCalendar}
                           >
-                            📆 View Calendar
+                            📆 {language === 'hi' ? 'कैलेंडर देखें' : 'View Calendar'}
                           </button>
                         </div>
                       )}
@@ -629,7 +702,7 @@ function App() {
                     <div className="message-avatar">📅</div>
                     <div className="message-content booking-embed-container">
                       <div className="booking-embed-header">
-                        <span>Select a time slot</span>
+                        <span>{language === 'hi' ? 'समय चुनें' : 'Select a time slot'}</span>
                         <button
                           className="close-booking-btn"
                           onClick={() => setShowInlineBooking(false)}
@@ -642,6 +715,128 @@ function App() {
                         className="cal-inline-embed"
                         style={{ width: '100%', minHeight: '400px' }}
                       />
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom Booking Form */}
+                {showBookingForm && (
+                  <div className="message assistant">
+                    <div className="message-avatar">📝</div>
+                    <div className="message-content booking-form-container">
+                      <div className="booking-embed-header">
+                        <span>{language === 'hi' ? '📅 अपॉइंटमेंट बुक करें' : '📅 Book Appointment'}</span>
+                        <button
+                          className="close-booking-btn"
+                          onClick={() => setShowBookingForm(false)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <form className="booking-form" onSubmit={submitBooking}>
+                        <div className="form-group">
+                          <label>{language === 'hi' ? '👤 पूरा नाम *' : '👤 Full Name *'}</label>
+                          <input
+                            type="text"
+                            name="fullName"
+                            value={bookingForm.fullName}
+                            onChange={handleBookingInputChange}
+                            placeholder={language === 'hi' ? 'अपना नाम लिखें' : 'Enter your name'}
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>{language === 'hi' ? '📞 मोबाइल नंबर *' : '📞 Mobile Number *'}</label>
+                          <input
+                            type="tel"
+                            name="phone"
+                            value={bookingForm.phone}
+                            onChange={handleBookingInputChange}
+                            placeholder="9876543210"
+                            pattern="[6-9][0-9]{9}"
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>{language === 'hi' ? '📧 ईमेल *' : '📧 Email *'}</label>
+                          <input
+                            type="email"
+                            name="email"
+                            value={bookingForm.email}
+                            onChange={handleBookingInputChange}
+                            placeholder="your@email.com"
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>{language === 'hi' ? '🛠️ सेवा' : '🛠️ Service'}</label>
+                          <select
+                            name="service"
+                            value={bookingForm.service}
+                            onChange={handleBookingInputChange}
+                          >
+                            <option value="Project Discussion">Project Discussion</option>
+                            <option value="Custom Software Development">Custom Software Development</option>
+                            <option value="Mobile App Development">Mobile App Development</option>
+                            <option value="Web Development">Web Development</option>
+                            <option value="AI/ML Solutions">AI/ML Solutions</option>
+                            <option value="Consultation">Consultation</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div className="form-row">
+                          <div className="form-group">
+                            <label>{language === 'hi' ? '📅 तारीख *' : '📅 Date *'}</label>
+                            <input
+                              type="date"
+                              name="preferredDate"
+                              value={bookingForm.preferredDate}
+                              onChange={handleBookingInputChange}
+                              min={new Date().toISOString().split('T')[0]}
+                              required
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>{language === 'hi' ? '⏰ समय *' : '⏰ Time *'}</label>
+                            <select
+                              name="preferredTime"
+                              value={bookingForm.preferredTime}
+                              onChange={handleBookingInputChange}
+                              required
+                            >
+                              <option value="">{language === 'hi' ? 'समय चुनें' : 'Select time'}</option>
+                              <option value="09:00 AM">09:00 AM</option>
+                              <option value="10:00 AM">10:00 AM</option>
+                              <option value="11:00 AM">11:00 AM</option>
+                              <option value="12:00 PM">12:00 PM</option>
+                              <option value="02:00 PM">02:00 PM</option>
+                              <option value="03:00 PM">03:00 PM</option>
+                              <option value="04:00 PM">04:00 PM</option>
+                              <option value="05:00 PM">05:00 PM</option>
+                              <option value="06:00 PM">06:00 PM</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label>{language === 'hi' ? '📝 अतिरिक्त नोट्स' : '📝 Additional Notes'}</label>
+                          <textarea
+                            name="notes"
+                            value={bookingForm.notes}
+                            onChange={handleBookingInputChange}
+                            placeholder={language === 'hi' ? 'कोई विशेष जानकारी...' : 'Any specific requirements...'}
+                            rows="2"
+                          />
+                        </div>
+                        <button 
+                          type="submit" 
+                          className="booking-submit-btn"
+                          disabled={bookingSubmitting}
+                        >
+                          {bookingSubmitting 
+                            ? (language === 'hi' ? '⏳ बुक हो रहा है...' : '⏳ Booking...') 
+                            : (language === 'hi' ? '✅ बुकिंग कन्फर्म करें' : '✅ Confirm Booking')}
+                        </button>
+                      </form>
                     </div>
                   </div>
                 )}
