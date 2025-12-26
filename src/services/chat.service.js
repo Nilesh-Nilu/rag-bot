@@ -3,6 +3,71 @@ import { searchSimilarChunks } from "./document.service.js";
 import { saveMessage, getConversationHistory } from "./database.service.js";
 import { toolDefinitions, executeTool } from "./appointment.service.js";
 
+// Sales chatbot system prompt for Murmu Software Infotech
+const SALES_BOT_PROMPT = `You are an AI Sales & Pre-Sales Assistant for **Murmu Software Infotech**.
+
+## YOUR ROLE:
+- Pre-Sales Consultant
+- Cost Estimator  
+- Lead Qualifier
+- Meeting Scheduler
+- AI & Enterprise Solution Advisor
+
+## GREETING (First message or when user says hi/hello):
+Respond with a warm welcome like:
+"👋 Welcome to Murmu Software Infotech!
+
+We help businesses build:
+✔ Custom Software & Platforms
+✔ AI & MVP Solutions  
+✔ Enterprise & CMS Implementations
+✔ Dedicated Development Teams
+
+How can I help you today?
+
+1. 🚀 Software Development Services
+2. 💰 Project Cost Estimation
+3. 👨‍💻 Hire Developers
+4. 🤖 AI/MVP Development
+5. 🏢 Enterprise Solutions
+6. 🌐 Sitecore CMS Services
+7. 🔧 Bug Fix & Support
+8. 📞 Schedule a Call"
+
+## BEHAVIOR RULES:
+1. Be professional, helpful, and sales-focused
+2. Guide users toward scheduling a meeting or getting a quote
+3. Collect lead information (name, email) when showing genuine interest
+4. Use the appropriate tools for actions:
+   - capture_lead: When user provides contact details
+   - get_cost_estimate: For pricing questions
+   - get_hiring_rates: For developer hiring inquiries
+   - get_mvp_packages: For MVP/startup projects
+   - schedule_meeting: To book calls/meetings
+   - get_services_list: To show all services
+
+5. For cost questions, use get_cost_estimate tool - don't make up prices
+6. Always suggest next steps (demo, meeting, or more info)
+7. Keep responses concise but informative
+8. Use emojis sparingly for friendliness
+
+## LEAD CAPTURE RULES:
+- Ask for name and email when user shows buying intent
+- Don't ask for phone immediately (reduces drop-off)
+- Phone is needed only for meeting scheduling
+
+## MEETING TYPES:
+- Sales Consultant: For project discussions
+- Technical Expert: For technical requirements
+- CTO Discussion: For strategic/enterprise projects
+
+## PRICING (Use tools for exact figures):
+- MVP: ₹1.5L - ₹5L+
+- Standard Projects: ₹1L - ₹20L
+- Enterprise: ₹20L+
+- Hourly: ₹1500/hour
+- Monthly: ₹1.8L/developer`;
+
 export async function processChat(botId, message, sessionId, language = "en") {
   console.log("\n┌─────────────────────────────────────────────────────────┐");
   console.log("│           CHAT SERVICE - PROCESSING MESSAGE            │");
@@ -29,29 +94,20 @@ export async function processChat(botId, message, sessionId, language = "en") {
     });
   }
 
-  if (matches.length === 0) {
-    console.log("   ⚠️ No documents found - asking user to upload");
-    return {
-      answer: language === "hi" 
-        ? "कृपया पहले एक दस्तावेज़ अपलोड करें।" 
-        : "Please upload a document first.",
-      sessionId,
-      sources: 0,
-    };
-  }
-
-  const context = matches.map(m => m.text).join("\n\n");
-  console.log(`   📝 Context length: ${context.length} characters`);
+  // Build context from documents (if available)
+  const documentContext = matches.length > 0 
+    ? `\n\n## COMPANY DOCUMENTS:\n${matches.map(m => m.text).join("\n\n")}`
+    : "";
 
   // ============ STEP 2: Load Conversation History ============
   console.log("\n💬 STEP 2: Loading conversation history from DB...");
   const historyStart = Date.now();
-  const history = await getConversationHistory(botId, sessionId, 8);
+  const history = await getConversationHistory(botId, sessionId, 10);
   console.log(`   ⏱️ History loaded in: ${Date.now() - historyStart}ms`);
   console.log(`   📜 Found ${history.length} previous messages`);
   if (history.length > 0) {
     console.log("   Recent history:");
-    history.slice(-3).forEach((h, i) => {
+    history.slice(-3).forEach((h) => {
       console.log(`      ${h.role}: "${h.content.substring(0, 50)}..."`);
     });
   }
@@ -65,25 +121,13 @@ export async function processChat(botId, message, sessionId, language = "en") {
 
   // ============ STEP 4: Build System Prompt ============
   console.log("\n🔧 STEP 4: Building system prompt...");
-  const systemPrompt = `You are a helpful AI assistant for a company. You can:
-1. Answer questions based on company documents
-2. Help book meetings with the team
-
-LANGUAGE: ${language === "hi" ? "Respond in Hindi (हिंदी)" : "Respond in English"}
-
-COMPANY INFO:
----
-${context}
----
-
-BOOKING RULES:
-- Collect: client name, phone, preferred date, time
-- Purpose defaults to "Discussion" if not provided
-- Use book_appointment tool when you have all details
-
-Be professional, helpful, and concise.`;
-
+  const languageInstruction = language === "hi" 
+    ? "\n\n## LANGUAGE: Respond in Hindi (हिंदी)" 
+    : "\n\n## LANGUAGE: Respond in English";
+  
+  const systemPrompt = SALES_BOT_PROMPT + documentContext + languageInstruction;
   console.log(`   📝 System prompt length: ${systemPrompt.length} characters`);
+  console.log(`   📄 Document context included: ${matches.length > 0 ? "Yes" : "No"}`);
 
   // ============ STEP 5: Prepare Messages for OpenAI ============
   console.log("\n📤 STEP 5: Preparing messages for OpenAI...");
@@ -113,7 +157,7 @@ Be professional, helpful, and concise.`;
   console.log("\n🤖 STEP 7: Calling OpenAI API...");
   console.log("   Model: gpt-4o-mini");
   console.log("   Temperature: 0.7");
-  console.log("   Max tokens: 800");
+  console.log("   Max tokens: 1000");
   
   const openaiStart = Date.now();
   let response = await openai.chat.completions.create({
@@ -122,7 +166,7 @@ Be professional, helpful, and concise.`;
     tools,
     tool_choice: "auto",
     temperature: 0.7,
-    max_tokens: 800,
+    max_tokens: 1000,
   });
   console.log(`   ⏱️ OpenAI response in: ${Date.now() - openaiStart}ms`);
   console.log(`   📊 Usage: ${response.usage?.total_tokens || "N/A"} tokens`);
@@ -132,7 +176,7 @@ Be professional, helpful, and concise.`;
 
   // ============ STEP 8: Handle MCP Tool Calls ============
   let iterations = 0;
-  while (assistantMessage.tool_calls && iterations < 3) {
+  while (assistantMessage.tool_calls && iterations < 5) {
     iterations++;
     console.log("\n" + "─".repeat(50));
     console.log(`🔧 MCP TOOL EXECUTION (Iteration ${iterations})`);
@@ -150,7 +194,8 @@ Be professional, helpful, and concise.`;
       });
 
       const toolStart = Date.now();
-      const result = await executeTool(botId, toolCall.function.name, args);
+      // Pass sessionId to tool execution
+      const result = await executeTool(botId, sessionId, toolCall.function.name, args);
       console.log(`   ⏱️ Tool executed in: ${Date.now() - toolStart}ms`);
       console.log(`   📤 Result: ${JSON.stringify(result).substring(0, 100)}...`);
       
@@ -172,7 +217,7 @@ Be professional, helpful, and concise.`;
       tools,
       tool_choice: "auto",
       temperature: 0.7,
-      max_tokens: 800,
+      max_tokens: 1000,
     });
     console.log(`   ⏱️ Follow-up response in: ${Date.now() - followupStart}ms`);
 
@@ -180,7 +225,7 @@ Be professional, helpful, and concise.`;
     console.log(`   📝 New response type: ${assistantMessage.tool_calls ? "TOOL CALL" : "TEXT"}`);
   }
 
-  const answer = assistantMessage.content || "I couldn't process that request.";
+  const answer = assistantMessage.content || "I couldn't process that request. Please try again.";
 
   // ============ STEP 9: Save Assistant Response ============
   console.log("\n💾 STEP 9: Saving assistant response to database...");

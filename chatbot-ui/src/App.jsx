@@ -32,6 +32,15 @@ function App() {
   const recognitionRef = useRef(null);
   const synthRef = useRef(window.speechSynthesis);
 
+  // Quick action buttons for sales flow
+  const quickActions = [
+    { icon: "🚀", label: "Services", message: "What services do you offer?" },
+    { icon: "💰", label: "Pricing", message: "I want to know the project cost estimation" },
+    { icon: "👨‍💻", label: "Hire Developer", message: "I want to hire a developer" },
+    { icon: "🤖", label: "MVP", message: "Tell me about MVP development packages" },
+    { icon: "📞", label: "Schedule Call", message: "I want to schedule a call with your team" },
+  ];
+
   // Save sessionId to localStorage whenever it changes
   useEffect(() => {
     if (sessionId) {
@@ -60,49 +69,32 @@ function App() {
     }
   };
 
-  // Load voices for TTS - prioritize premium/enhanced voices
+  // Load voices for TTS
   useEffect(() => {
     const loadVoices = () => {
       const availableVoices = synthRef.current.getVoices();
       setVoices(availableVoices);
       
-      // Log available voices for debugging
-      console.log("Available voices:", availableVoices.map(v => `${v.name} (${v.lang})`));
-      
-      // Priority order: Premium/Enhanced voices first, then neural, then standard
       const voicePriority = [
-        // macOS Premium voices (most natural)
         "Samantha (Enhanced)", "Samantha (Premium)", 
         "Alex (Enhanced)", "Alex",
         "Ava (Enhanced)", "Ava (Premium)", "Ava",
-        "Zoe (Enhanced)", "Zoe (Premium)", "Zoe",
-        "Siri", // Siri voices are very natural
-        // Google Chrome voices
         "Google UK English Female", "Google UK English Male",
         "Google US English",
-        // Microsoft Edge voices (Neural)
         "Microsoft Aria Online", "Microsoft Jenny Online",
-        "Microsoft Guy Online", "Microsoft Eric Online",
-        // Standard fallbacks
-        "Samantha", "Karen", "Daniel", "Moira",
-        "Microsoft Zira", "Microsoft David",
+        "Samantha", "Karen", "Daniel",
       ];
       
       let voice = null;
       for (const pref of voicePriority) {
         voice = availableVoices.find(v => v.name === pref || v.name.includes(pref));
-        if (voice) {
-          console.log("Selected voice:", voice.name);
-          break;
-        }
+        if (voice) break;
       }
       
-      // Fallback: prefer English voices
       if (!voice) {
         voice = availableVoices.find(v => v.lang === "en-US") 
              || availableVoices.find(v => v.lang.startsWith("en")) 
              || availableVoices[0];
-        console.log("Fallback voice:", voice?.name);
       }
       
       setSelectedVoice(voice);
@@ -112,30 +104,25 @@ function App() {
     if (synthRef.current.onvoiceschanged !== undefined) {
       synthRef.current.onvoiceschanged = loadVoices;
     }
-    // Try again after a delay (some browsers load voices async)
     setTimeout(loadVoices, 100);
   }, []);
 
-  // Save voice preference
   useEffect(() => {
     localStorage.setItem("voiceEnabled", voiceEnabled);
   }, [voiceEnabled]);
 
-  // Natural text-to-speech with sentence chunking for realistic pauses
   const speak = useCallback((text) => {
     if (!voiceEnabled || !text) return;
     
     synthRef.current.cancel();
     
-    // Clean and prepare text
     let cleanText = text
-      .replace(/[*_~`#]/g, "") // Remove markdown
-      .replace(/\n+/g, " ") // Replace newlines with spaces
-      .replace(/\s+/g, " ") // Normalize whitespace
-      .replace(/(\d+)/g, " $1 ") // Add space around numbers for better pronunciation
+      .replace(/[*_~`#]/g, "")
+      .replace(/\n+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/(\d+)/g, " $1 ")
       .trim();
     
-    // Split into sentences for natural pauses between them
     const sentences = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
     
     let currentIndex = 0;
@@ -159,16 +146,14 @@ function App() {
         utterance.voice = selectedVoice;
       }
       
-      // Natural speech parameters
-      utterance.rate = 0.92; // Slightly slower - more conversational
-      utterance.pitch = 1.0; // Natural pitch
+      utterance.rate = 0.92;
+      utterance.pitch = 1.0;
       utterance.volume = 1;
       
       utterance.onstart = () => setIsSpeaking(true);
       
       utterance.onend = () => {
         currentIndex++;
-        // Small pause between sentences (150-300ms feels natural)
         setTimeout(speakNext, 150 + Math.random() * 150);
       };
       
@@ -184,28 +169,23 @@ function App() {
     speakNext();
   }, [voiceEnabled, selectedVoice]);
 
-  // Stop speaking
   const stopSpeaking = () => {
     synthRef.current.cancel();
     setIsSpeaking(false);
   };
 
-  // Auto-send timer ref
   const autoSendTimerRef = useRef(null);
 
-  // Speech Recognition functions
   const startListening = useCallback(() => {
     if (!SpeechRecognition) {
       alert("Voice input not supported in your browser. Try Chrome or Edge.");
       return;
     }
 
-    // Clear any pending auto-send
     if (autoSendTimerRef.current) {
       clearTimeout(autoSendTimerRef.current);
     }
 
-    // Create fresh recognition instance
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = true;
@@ -223,14 +203,11 @@ function App() {
       }
       setInput(transcript);
       
-      // If final result, set up auto-send after delay
       if (event.results[event.results.length - 1].isFinal) {
         setIsListening(false);
         
-        // Auto-send after 1 second delay
         if (transcript.trim()) {
           autoSendTimerRef.current = setTimeout(() => {
-            // Trigger form submission
             const form = document.querySelector('.input-area');
             if (form) {
               form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
@@ -284,7 +261,7 @@ function App() {
       const res = await fetch(`${API_URL}/api/bots`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Company Bot", website: window.location.href }),
+        body: JSON.stringify({ name: "Murmu Software Bot", website: "murmusoftware.com" }),
       });
       const data = await res.json();
       localStorage.setItem("botId", data.botId);
@@ -310,8 +287,25 @@ function App() {
       if (data.success) {
         setUploadStatus({ type: "success", message: `✅ ${data.filename} uploaded!` });
         setActiveTab("chat");
-        // Add welcome message after upload
-        const welcomeMsg = { role: "assistant", content: "Hello! 👋 Your document has been uploaded. I can now answer questions about your company and help you book meetings with our team. How can I help you today?" };
+        const welcomeMsg = { 
+          role: "assistant", 
+          content: `👋 Welcome to Murmu Software Infotech!
+
+We help businesses build:
+✔ Custom Software & Platforms
+✔ AI & MVP Solutions
+✔ Enterprise & CMS Implementations
+✔ Dedicated Development Teams
+
+How can I help you today?
+
+1. 🚀 Software Development Services
+2. 💰 Project Cost Estimation
+3. 👨‍💻 Hire Developers
+4. 🤖 AI/MVP Development
+5. 🏢 Enterprise Solutions
+6. 📞 Schedule a Call` 
+        };
         setMessages(prev => [...prev, welcomeMsg]);
       } else {
         setUploadStatus({ type: "error", message: data.error || "Upload failed." });
@@ -327,34 +321,31 @@ function App() {
     handleFileUpload(e.dataTransfer.files[0]);
   };
 
-  const sendMessage = async (e) => {
+  const sendMessage = async (e, quickMessage = null) => {
     if (e) e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    const messageToSend = quickMessage || input.trim();
+    if (!messageToSend || isLoading) return;
 
-    // Clear auto-send timer
     if (autoSendTimerRef.current) {
       clearTimeout(autoSendTimerRef.current);
       autoSendTimerRef.current = null;
     }
 
-    // Stop any ongoing speech
     stopSpeaking();
 
-    const userMessage = input.trim();
     setInput("");
-    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+    setMessages(prev => [...prev, { role: "user", content: messageToSend }]);
     setIsLoading(true);
 
     try {
       const response = await fetch(`${API_URL}/api/bots/${botId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, sessionId }),
+        body: JSON.stringify({ message: messageToSend, sessionId }),
       });
       const data = await response.json();
       setMessages(prev => [...prev, { role: "assistant", content: data.answer }]);
       
-      // Speak the response if voice is enabled
       if (voiceEnabled && data.answer) {
         speak(data.answer);
       }
@@ -377,11 +368,21 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
       });
-      // Create new session
       const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       setSessionId(newSessionId);
       localStorage.setItem("chatSessionId", newSessionId);
-      setMessages([{ role: "assistant", content: "Hello! 👋 How can I help you today? I can answer questions about our company or help you schedule a meeting." }]);
+      setMessages([{ 
+        role: "assistant", 
+        content: `👋 Welcome to Murmu Software Infotech!
+
+We help businesses build:
+✔ Custom Software & Platforms
+✔ AI & MVP Solutions
+✔ Enterprise & CMS Implementations
+✔ Dedicated Development Teams
+
+How can I help you today?` 
+      }]);
       setHistoryLoaded(true);
     } catch (error) {}
   };
@@ -391,10 +392,16 @@ function App() {
       <div className="app">
         <div className="onboarding">
           <div className="onboarding-content">
-            <div className="logo-large">💼</div>
-            <h1>Company AI Assistant</h1>
-            <p>AI chatbot that answers questions from your documents and books meetings with your team</p>
-            <button className="btn-primary" onClick={createBot}>Get Started</button>
+            <div className="logo-large">🏢</div>
+            <h1>Murmu Software Infotech</h1>
+            <p>AI-Powered Sales Assistant for Custom Software, AI/MVP Solutions, and Enterprise Platforms</p>
+            <div className="features-list">
+              <div className="feature-item">🚀 Software Development</div>
+              <div className="feature-item">🤖 AI & Automation</div>
+              <div className="feature-item">💼 Hire Developers</div>
+              <div className="feature-item">📊 Enterprise Solutions</div>
+            </div>
+            <button className="btn-primary" onClick={createBot}>Start Conversation</button>
           </div>
         </div>
       </div>
@@ -407,22 +414,34 @@ function App() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="logo">
-              <span className="logo-icon">💼</span>
-              <span>AI Assistant</span>
+              <span className="logo-icon">🏢</span>
+              <span>Murmu Software</span>
             </div>
           </div>
           <nav className="sidebar-nav">
             <button className={`nav-item ${activeTab === "chat" ? "active" : ""}`} onClick={() => setActiveTab("chat")}>
-              💬 Chat
+              💬 Sales Chat
             </button>
             <button className={`nav-item ${activeTab === "upload" ? "active" : ""}`} onClick={() => setActiveTab("upload")}>
-              📤 Upload Document
+              📤 Company Docs
             </button>
           </nav>
+          <div className="sidebar-services">
+            <h4>Quick Actions</h4>
+            {quickActions.map((action, i) => (
+              <button 
+                key={i} 
+                className="service-btn"
+                onClick={() => { setActiveTab("chat"); sendMessage(null, action.message); }}
+              >
+                {action.icon} {action.label}
+              </button>
+            ))}
+          </div>
           <div className="sidebar-footer">
             <div className="bot-info">
               <span className="status-dot"></span>
-              <span>Bot: {botId.slice(0, 8)}...</span>
+              <span>Online</span>
             </div>
           </div>
         </aside>
@@ -431,7 +450,10 @@ function App() {
           {activeTab === "chat" && (
             <div className="chat-panel">
               <div className="chat-header">
-                <h2>💬 Chat with AI</h2>
+                <div className="header-info">
+                  <h2>🤖 Sales Assistant</h2>
+                  <span className="header-subtitle">Pre-Sales • Cost Estimation • Meeting Scheduler</span>
+                </div>
                 <div className="header-controls">
                   <button className="clear-btn" onClick={clearChat}>🔄 New Chat</button>
                 </div>
@@ -440,11 +462,17 @@ function App() {
               <div className="messages">
                 {messages.length === 0 && !isLoading && (
                   <div className="empty-chat">
-                    <div className="empty-icon">💼</div>
-                    <p>Welcome!</p>
-                    <span>Upload a company document first, then ask questions or book meetings</span>
+                    <div className="empty-icon">🏢</div>
+                    <h2>Welcome to Murmu Software Infotech!</h2>
+                    <p>Your AI-powered sales assistant. I can help you with:</p>
+                    <div className="empty-features">
+                      <div className="empty-feature">💰 Project Cost Estimation</div>
+                      <div className="empty-feature">👨‍💻 Developer Hiring Rates</div>
+                      <div className="empty-feature">🤖 MVP Development Packages</div>
+                      <div className="empty-feature">📞 Schedule Expert Consultation</div>
+                    </div>
                     <div className="quick-actions">
-                      <button onClick={() => setActiveTab("upload")}>📤 Upload Document</button>
+                      <button onClick={() => setActiveTab("upload")}>📤 Upload Company Document First</button>
                     </div>
                   </div>
                 )}
@@ -468,7 +496,6 @@ function App() {
               </div>
 
               <form className="input-area" onSubmit={sendMessage}>
-                {/* Voice toggle */}
                 <button
                   type="button"
                   className={`voice-toggle ${voiceEnabled ? "active" : ""}`}
@@ -478,7 +505,6 @@ function App() {
                   {voiceEnabled ? "🔊" : "🔇"}
                 </button>
                 
-                {/* Mic button */}
                 <button
                   type="button"
                   className={`mic-btn ${isListening ? "listening" : ""}`}
@@ -493,11 +519,10 @@ function App() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder={isListening ? "Listening..." : "Ask a question or book a meeting..."}
+                  placeholder={isListening ? "Listening..." : "Ask about services, pricing, or schedule a call..."}
                   disabled={isLoading}
                 />
                 
-                {/* Stop speaking button */}
                 {isSpeaking && (
                   <button type="button" className="stop-btn" onClick={stopSpeaking} title="Stop speaking">
                     ⏹️
@@ -517,7 +542,7 @@ function App() {
             <div className="upload-panel">
               <div className="panel-header">
                 <h2>📤 Upload Company Document</h2>
-                <p>Upload your company info (PDF/DOCX) - services, team, pricing, FAQs, etc.</p>
+                <p>Upload your company info (PDF/DOCX) - services, team, pricing, etc.</p>
               </div>
               <div
                 className={`upload-zone ${dragOver ? "dragover" : ""}`}
@@ -533,13 +558,14 @@ function App() {
               </div>
               {uploadStatus && <div className={`upload-status ${uploadStatus.type}`}>{uploadStatus.message}</div>}
               <div className="upload-tips">
-                <h3>📋 Include in your document:</h3>
+                <h3>📋 Recommended Content:</h3>
                 <ul>
-                  <li>Company overview and services</li>
-                  <li>Team members and their roles</li>
-                  <li>Pricing and packages</li>
-                  <li>FAQs and contact info</li>
-                  <li>Available meeting times</li>
+                  <li>✓ Company overview and services</li>
+                  <li>✓ Team members and roles</li>
+                  <li>✓ Pricing packages (MVP, Enterprise)</li>
+                  <li>✓ Developer hiring rates</li>
+                  <li>✓ Technology stack</li>
+                  <li>✓ Case studies / Portfolio</li>
                 </ul>
               </div>
             </div>

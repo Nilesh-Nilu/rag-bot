@@ -1,0 +1,103 @@
+# MURMU SOFTWARE INFOTECH - COMPANY INFORMATION
+
+## About Us
+Murmu Software Infotech is a leading software development company specializing in custom software solutions, AI/ML development, enterprise platforms, and CMS implementations. We help businesses transform their ideas into powerful digital solutions.
+
+## Our Services
+
+### 1. Custom Software Development
+- Custom Software / ERP / CRM systems
+- Website & Web Applications
+- Mobile App Development (iOS & Android)
+- API Development & Integration
+- Legacy System Modernization
+
+### 2. AI & Automation Solutions
+- AI Chatbots & Virtual Assistants
+- Process Automation (RPA)
+- AI Analytics & Business Intelligence
+- OCR & Document Processing
+- Natural Language Processing (NLP)
+- Machine Learning Solutions
+- Custom AI Products
+
+### 3. MVP Development
+We help startups and businesses launch products quickly with our MVP packages:
+- Starter MVP: ₹1.5L - Core features, basic UI
+- Growth MVP: ₹3L - Advanced features, APIs
+- AI MVP: ₹5L+ - AI models & automation
+- Fast delivery in 2-8 weeks
+- Scalable architecture
+
+### 4. Enterprise Software Platforms
+- Multi-user systems
+- Role-based access control
+- High scalability solutions
+- Security & compliance
+- Cloud deployment (AWS, Azure, GCP)
+- Starting from ₹15L+
+
+### 5. Sitecore CMS Services
+- Sitecore Development
+- Headless CMS / XM Cloud
+- AI Personalization
+- Migration & Upgrades
+- Support & Optimization
+- Sitecore AI Search
+
+### 6. Bug Fix & Instant Support
+- Quick turnaround bug fixes
+- Code review & optimization
+- Performance improvements
+- 24/7 support available
+
+## Hiring Models - Dedicated Developers
+
+### Available Technologies:
+- .NET / .NET Core
+- React / Next.js
+- Node.js
+- PHP / Laravel
+- Python / AI/ML
+- CMS / Sitecore Developers
+
+### Engagement Options:
+- Hourly: Starting ₹1500/hour
+- Monthly: Starting ₹1.8L/developer
+- Dedicated Team: Custom pricing
+- Includes communication, reporting & support
+
+## Project Cost Estimation
+
+### Based on Complexity:
+- Basic Project: ₹1L - ₹3L
+- Medium Complexity: ₹3L - ₹8L
+- Advanced / AI Project: ₹8L - ₹20L
+- Enterprise Platform: ₹20L+
+
+### Factors Affecting Cost:
+- Feature complexity
+- Number of integrations
+- Design requirements
+- Timeline urgency
+- Technology stack
+
+## Meeting Types Available
+- Sales Consultant - For project discussions
+- Technical Expert - For technical requirements
+- CTO Discussion - For strategic/enterprise projects
+
+## Contact Information
+- Website: www.murmusoftware.com
+- Location: India
+- Working Hours: Monday-Friday, 10 AM - 7 PM IST
+
+## Why Choose Us?
+✓ 10+ years of industry experience
+✓ 200+ successful projects delivered
+✓ Agile development methodology
+✓ Transparent communication
+✓ Post-launch support included
+✓ Competitive pricing
+✓ NDA & IP protection
+

@@ -39,19 +39,59 @@ export function initializeDatabase() {
         )
       `);
 
+      // Leads table for capturing potential customers
+      db.run(`
+        CREATE TABLE IF NOT EXISTS leads (
+          id TEXT PRIMARY KEY,
+          bot_id TEXT,
+          session_id TEXT,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL,
+          phone TEXT,
+          company TEXT,
+          service_interest TEXT,
+          project_type TEXT,
+          budget_range TEXT,
+          timeline TEXT,
+          inquiry TEXT,
+          lead_status TEXT DEFAULT 'new',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (bot_id) REFERENCES bots(id)
+        )
+      `);
+
       // Appointments table
       db.run(`
         CREATE TABLE IF NOT EXISTS appointments (
           id TEXT PRIMARY KEY,
           bot_id TEXT,
+          lead_id TEXT,
           contact_person TEXT NOT NULL,
           client_name TEXT NOT NULL,
           client_phone TEXT,
           client_email TEXT,
+          company_name TEXT,
+          meeting_type TEXT,
           meeting_date TEXT NOT NULL,
           meeting_time TEXT NOT NULL,
           purpose TEXT,
           status TEXT DEFAULT 'confirmed',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (bot_id) REFERENCES bots(id),
+          FOREIGN KEY (lead_id) REFERENCES leads(id)
+        )
+      `);
+
+      // Cost estimates table
+      db.run(`
+        CREATE TABLE IF NOT EXISTS cost_estimates (
+          id TEXT PRIMARY KEY,
+          bot_id TEXT,
+          session_id TEXT,
+          project_type TEXT,
+          complexity TEXT,
+          estimated_cost TEXT,
+          details TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (bot_id) REFERENCES bots(id)
         )
@@ -73,6 +113,7 @@ export function initializeDatabase() {
       // Indexes
       db.run(`CREATE INDEX IF NOT EXISTS idx_documents_bot ON documents(bot_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_appointments_bot ON appointments(bot_id)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_leads_bot ON leads(bot_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(bot_id, session_id)`, (err) => {
         if (err) reject(err);
         else resolve();
@@ -82,4 +123,3 @@ export function initializeDatabase() {
 }
 
 export default db;
-

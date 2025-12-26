@@ -78,6 +78,74 @@ export async function clearDocuments(botId) {
   return result.changes;
 }
 
+// ==================== LEAD OPERATIONS ====================
+
+export async function createLead(botId, sessionId, data) {
+  const id = uuidv4();
+  console.log(`\n   🗃️ DB: Creating lead...`);
+  console.log(`      ID: ${id.slice(0, 8).toUpperCase()}`);
+  console.log(`      Name: ${data.name}`);
+  console.log(`      Email: ${data.email}`);
+  console.log(`      Service: ${data.service_interest || "General"}`);
+  
+  await runQuery(
+    `INSERT INTO leads (id, bot_id, session_id, name, email, phone, company, service_interest, project_type, budget_range, timeline, inquiry, lead_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, botId, sessionId, data.name, data.email, data.phone || null, data.company || null, 
+     data.service_interest || null, data.project_type || null, data.budget_range || null,
+     data.timeline || null, data.inquiry || null, 'new']
+  );
+  
+  console.log(`   ✅ DB: Lead captured successfully!`);
+  return { id, ...data };
+}
+
+export async function getLeads(botId) {
+  console.log(`   🗃️ DB: Fetching all leads for bot: ${botId}`);
+  const leads = await getAll(
+    "SELECT * FROM leads WHERE bot_id = ? ORDER BY created_at DESC",
+    [botId]
+  );
+  console.log(`   ✅ DB: Found ${leads.length} leads`);
+  return leads;
+}
+
+export async function getLeadByEmail(botId, email) {
+  console.log(`   🗃️ DB: Searching lead by email: ${email}`);
+  return getOne(
+    "SELECT * FROM leads WHERE bot_id = ? AND LOWER(email) = LOWER(?)",
+    [botId, email]
+  );
+}
+
+export async function updateLeadStatus(leadId, status) {
+  console.log(`   🗃️ DB: Updating lead ${leadId} status to: ${status}`);
+  await runQuery(
+    "UPDATE leads SET lead_status = ? WHERE id = ?",
+    [status, leadId]
+  );
+  console.log(`   ✅ DB: Lead status updated`);
+}
+
+// ==================== COST ESTIMATE OPERATIONS ====================
+
+export async function saveCostEstimate(botId, sessionId, data) {
+  const id = uuidv4();
+  console.log(`\n   🗃️ DB: Saving cost estimate...`);
+  console.log(`      Project Type: ${data.project_type}`);
+  console.log(`      Complexity: ${data.complexity}`);
+  console.log(`      Estimated Cost: ${data.estimated_cost}`);
+  
+  await runQuery(
+    `INSERT INTO cost_estimates (id, bot_id, session_id, project_type, complexity, estimated_cost, details)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, botId, sessionId, data.project_type, data.complexity, data.estimated_cost, data.details || null]
+  );
+  
+  console.log(`   ✅ DB: Cost estimate saved!`);
+  return { id, ...data };
+}
+
 // ==================== APPOINTMENT OPERATIONS ====================
 
 export async function createAppointment(botId, data) {
@@ -86,13 +154,16 @@ export async function createAppointment(botId, data) {
   console.log(`      ID: ${id.slice(0, 8).toUpperCase()}`);
   console.log(`      Client: ${data.client_name}`);
   console.log(`      Phone: ${data.client_phone}`);
+  console.log(`      Meeting Type: ${data.meeting_type || "General"}`);
   console.log(`      Date: ${data.meeting_date}`);
   console.log(`      Time: ${data.meeting_time}`);
   
   await runQuery(
-    `INSERT INTO appointments (id, bot_id, contact_person, client_name, client_phone, client_email, meeting_date, meeting_time, purpose)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, botId, data.contact_person, data.client_name, data.client_phone, data.client_email, data.meeting_date, data.meeting_time, data.purpose]
+    `INSERT INTO appointments (id, bot_id, lead_id, contact_person, client_name, client_phone, client_email, company_name, meeting_type, meeting_date, meeting_time, purpose)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, botId, data.lead_id || null, data.contact_person || "Team", data.client_name, 
+     data.client_phone, data.client_email || null, data.company_name || null,
+     data.meeting_type || "General", data.meeting_date, data.meeting_time, data.purpose || "Discussion"]
   );
   
   console.log(`   ✅ DB: Appointment saved to database!`);
@@ -189,6 +260,11 @@ export default {
   insertDocumentChunk,
   getDocumentChunks,
   clearDocuments,
+  createLead,
+  getLeads,
+  getLeadByEmail,
+  updateLeadStatus,
+  saveCostEstimate,
   createAppointment,
   getAppointments,
   getAppointmentsByPhone,

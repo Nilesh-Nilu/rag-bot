@@ -72,8 +72,24 @@ body {
 
 .onboarding p {
   color: var(--text-secondary);
-  margin-bottom: 32px;
+  margin-bottom: 24px;
   line-height: 1.6;
+}
+
+.features-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.feature-item {
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: left;
 }
 
 .btn-primary {
@@ -157,6 +173,42 @@ body {
   color: white;
 }
 
+.sidebar-services {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-services h4 {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.service-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  margin-bottom: 4px;
+}
+
+.service-btn:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
 .sidebar-footer {
   padding: 16px;
   border-top: 1px solid var(--border);
@@ -202,9 +254,14 @@ body {
   align-items: center;
 }
 
-.chat-header h2 {
+.header-info h2 {
   font-size: 20px;
   font-weight: 600;
+}
+
+.header-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .header-controls {
@@ -313,6 +370,32 @@ body {
 .empty-chat span {
   font-size: 14px;
   margin-bottom: 20px;
+}
+
+.empty-chat h2 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #fff, var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.empty-features {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 24px 0;
+}
+
+.empty-feature {
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: left;
 }
 
 .quick-actions {
