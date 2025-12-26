@@ -1,7 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import "./App.css";
 
 const API_URL = "http://localhost:3001";
+
+// Speech Recognition setup
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 function App() {
   const [botId, setBotId] = useState(localStorage.getItem("botId") || "");
@@ -11,176 +14,269 @@ function App() {
   const [activeTab, setActiveTab] = useState("chat");
   const [uploadStatus, setUploadStatus] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [sessionId, setSessionId] = useState(() => {
+    const saved = localStorage.getItem("chatSessionId");
+    return saved || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  });
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  
+  // Voice states
   const [isListening, setIsListening] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voiceInputUsed, setVoiceInputUsed] = useState(false);
-  const [availableVoices, setAvailableVoices] = useState([]);
-  const [selectedVoice, setSelectedVoice] = useState('');
-  const [language, setLanguage] = useState('en');
-  const [sessionId, setSessionId] = useState('');
+  const [voiceEnabled, setVoiceEnabled] = useState(() => localStorage.getItem("voiceEnabled") === "true");
+  const [voices, setVoices] = useState([]);
+  const [selectedVoice, setSelectedVoice] = useState(null);
   
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
+  const synthRef = useRef(window.speechSynthesis);
 
-  const languages = [
-    { code: 'en', name: 'English', flag: '🇬🇧', ttsCode: 'en-uk', speechCode: 'en-IN' },
-    { code: 'hi', name: 'हिंदी', flag: '🇮🇳', ttsCode: 'hi', speechCode: 'hi-IN' },
-  ];
-
-  // Generate session ID
+  // Save sessionId to localStorage whenever it changes
   useEffect(() => {
-    if (!sessionId) {
-      setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+    if (sessionId) {
+      localStorage.setItem("chatSessionId", sessionId);
     }
+  }, [sessionId]);
+
+  // Load chat history when botId and sessionId are available
+  useEffect(() => {
+    if (botId && sessionId && !historyLoaded) {
+      loadChatHistory();
+    }
+  }, [botId, sessionId]);
+
+  const loadChatHistory = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/bots/${botId}/chat-history?sessionId=${sessionId}`);
+      const data = await res.json();
+      if (data.messages && data.messages.length > 0) {
+        setMessages(data.messages.map(m => ({ role: m.role, content: m.content })));
+      }
+      setHistoryLoaded(true);
+    } catch (error) {
+      console.error("Failed to load chat history");
+      setHistoryLoaded(true);
+    }
+  };
+
+  // Load voices for TTS - prioritize premium/enhanced voices
+  useEffect(() => {
+    const loadVoices = () => {
+      const availableVoices = synthRef.current.getVoices();
+      setVoices(availableVoices);
+      
+      // Log available voices for debugging
+      console.log("Available voices:", availableVoices.map(v => `${v.name} (${v.lang})`));
+      
+      // Priority order: Premium/Enhanced voices first, then neural, then standard
+      const voicePriority = [
+        // macOS Premium voices (most natural)
+        "Samantha (Enhanced)", "Samantha (Premium)", 
+        "Alex (Enhanced)", "Alex",
+        "Ava (Enhanced)", "Ava (Premium)", "Ava",
+        "Zoe (Enhanced)", "Zoe (Premium)", "Zoe",
+        "Siri", // Siri voices are very natural
+        // Google Chrome voices
+        "Google UK English Female", "Google UK English Male",
+        "Google US English",
+        // Microsoft Edge voices (Neural)
+        "Microsoft Aria Online", "Microsoft Jenny Online",
+        "Microsoft Guy Online", "Microsoft Eric Online",
+        // Standard fallbacks
+        "Samantha", "Karen", "Daniel", "Moira",
+        "Microsoft Zira", "Microsoft David",
+      ];
+      
+      let voice = null;
+      for (const pref of voicePriority) {
+        voice = availableVoices.find(v => v.name === pref || v.name.includes(pref));
+        if (voice) {
+          console.log("Selected voice:", voice.name);
+          break;
+        }
+      }
+      
+      // Fallback: prefer English voices
+      if (!voice) {
+        voice = availableVoices.find(v => v.lang === "en-US") 
+             || availableVoices.find(v => v.lang.startsWith("en")) 
+             || availableVoices[0];
+        console.log("Fallback voice:", voice?.name);
+      }
+      
+      setSelectedVoice(voice);
+    };
+
+    loadVoices();
+    if (synthRef.current.onvoiceschanged !== undefined) {
+      synthRef.current.onvoiceschanged = loadVoices;
+    }
+    // Try again after a delay (some browsers load voices async)
+    setTimeout(loadVoices, 100);
   }, []);
 
-  // Load voices
+  // Save voice preference
   useEffect(() => {
-    let attempts = 0;
-    const loadVoices = () => {
-      const voices = speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        setAvailableVoices(voices);
-        if (language === 'hi' && !selectedVoice) {
-          const hindiVoice = voices.find(v => v.lang.includes('hi') || v.name.toLowerCase().includes('hindi'));
-          if (hindiVoice) setSelectedVoice(hindiVoice.name);
-        }
-      } else if (attempts < 5) {
-        attempts++;
-        setTimeout(loadVoices, 500);
+    localStorage.setItem("voiceEnabled", voiceEnabled);
+  }, [voiceEnabled]);
+
+  // Natural text-to-speech with sentence chunking for realistic pauses
+  const speak = useCallback((text) => {
+    if (!voiceEnabled || !text) return;
+    
+    synthRef.current.cancel();
+    
+    // Clean and prepare text
+    let cleanText = text
+      .replace(/[*_~`#]/g, "") // Remove markdown
+      .replace(/\n+/g, " ") // Replace newlines with spaces
+      .replace(/\s+/g, " ") // Normalize whitespace
+      .replace(/(\d+)/g, " $1 ") // Add space around numbers for better pronunciation
+      .trim();
+    
+    // Split into sentences for natural pauses between them
+    const sentences = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
+    
+    let currentIndex = 0;
+    
+    const speakNext = () => {
+      if (currentIndex >= sentences.length) {
+        setIsSpeaking(false);
+        return;
       }
+      
+      const sentence = sentences[currentIndex].trim();
+      if (!sentence) {
+        currentIndex++;
+        speakNext();
+        return;
+      }
+      
+      const utterance = new SpeechSynthesisUtterance(sentence);
+      
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+      }
+      
+      // Natural speech parameters
+      utterance.rate = 0.92; // Slightly slower - more conversational
+      utterance.pitch = 1.0; // Natural pitch
+      utterance.volume = 1;
+      
+      utterance.onstart = () => setIsSpeaking(true);
+      
+      utterance.onend = () => {
+        currentIndex++;
+        // Small pause between sentences (150-300ms feels natural)
+        setTimeout(speakNext, 150 + Math.random() * 150);
+      };
+      
+      utterance.onerror = (e) => {
+        console.error("Speech error:", e);
+        setIsSpeaking(false);
+      };
+      
+      synthRef.current.speak(utterance);
     };
-    loadVoices();
-    speechSynthesis.onvoiceschanged = loadVoices;
-  }, [language]);
+    
+    setIsSpeaking(true);
+    speakNext();
+  }, [voiceEnabled, selectedVoice]);
 
-  // Speech recognition
-  const createRecognition = (onFinalResult) => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return null;
+  // Stop speaking
+  const stopSpeaking = () => {
+    synthRef.current.cancel();
+    setIsSpeaking(false);
+  };
 
+  // Auto-send timer ref
+  const autoSendTimerRef = useRef(null);
+
+  // Speech Recognition functions
+  const startListening = useCallback(() => {
+    if (!SpeechRecognition) {
+      alert("Voice input not supported in your browser. Try Chrome or Edge.");
+      return;
+    }
+
+    // Clear any pending auto-send
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current);
+    }
+
+    // Create fresh recognition instance
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = true;
+    recognition.lang = "en-US";
     recognition.maxAlternatives = 1;
-    const selectedLang = languages.find(l => l.code === language);
-    recognition.lang = selectedLang?.speechCode || "en-IN";
 
-    recognition.onstart = () => setIsListening(true);
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
     recognition.onresult = (event) => {
-      let interim = "", final = "";
+      let transcript = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) final += transcript;
-        else interim += transcript;
+        transcript += event.results[i][0].transcript;
       }
-      if (interim) setInput(interim);
-      if (final) {
-        setInput(final);
-        setVoiceInputUsed(true);
-        recognition.stop();
-        onFinalResult?.(final);
-      }
-    };
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
-    return recognition;
-  };
-
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
-        recognitionRef.current = null;
+      setInput(transcript);
+      
+      // If final result, set up auto-send after delay
+      if (event.results[event.results.length - 1].isFinal) {
+        setIsListening(false);
+        
+        // Auto-send after 1 second delay
+        if (transcript.trim()) {
+          autoSendTimerRef.current = setTimeout(() => {
+            // Trigger form submission
+            const form = document.querySelector('.input-area');
+            if (form) {
+              form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            }
+          }, 1000);
+        }
       }
     };
-  }, [language]);
 
-  const getBestVoice = (lang) => {
-    const voices = availableVoices.length > 0 ? availableVoices : speechSynthesis.getVoices();
-    if (!voices || voices.length === 0) return null;
-    if (selectedVoice) {
-      const voice = voices.find(v => v.name === selectedVoice);
-      if (voice) return voice;
+    recognition.onerror = (event) => {
+      console.error("Speech error:", event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, []);
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
     }
-    const preferredKeywords = ['Google', 'Neural', 'Natural', 'Microsoft'];
-    const byQuality = voices.find(v =>
-      preferredKeywords.some(k => v.name.toLowerCase().includes(k.toLowerCase()))
-      && (lang === 'hi' ? v.lang.toLowerCase().includes('hi') : v.lang.toLowerCase().startsWith('en'))
-    );
-    if (byQuality) return byQuality;
-    if (lang === 'hi') {
-      const hindiVoice = voices.find(v => v.lang.toLowerCase().startsWith('hi'));
-      if (hindiVoice) return hindiVoice;
-    }
-    return voices.find(v => v.lang.toLowerCase().startsWith(lang === 'hi' ? 'hi' : 'en')) || voices[0];
-  };
-
-  const audioRef = useRef(null);
-
-  const speakText = async (text, forceSpeak = false) => {
-    if ((!voiceEnabled && !forceSpeak) || !text) return;
-    stopSpeaking();
-    const cleanText = text
-      .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
-      .replace(/[*_~`#]/g, '').trim();
-    if (!cleanText) return;
-    setIsSpeaking(true);
-    
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    const voice = getBestVoice(language);
-    if (voice) utterance.voice = voice;
-    utterance.rate = language === 'hi' ? 0.9 : 0.92;
-    utterance.pitch = 1.05;
-    utterance.lang = languages.find(l => l.code === language)?.speechCode || 'en-IN';
-    utterance.onend = () => setIsSpeaking(false);
-    speechSynthesis.speak(utterance);
-  };
-
-  const stopSpeaking = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    speechSynthesis.cancel();
-    setIsSpeaking(false);
   };
 
   const toggleListening = () => {
     if (isListening) {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-      setIsListening(false);
-      return;
+      stopListening();
+    } else {
+      startListening();
     }
-    setInput("");
-    setVoiceInputUsed(false);
-    recognitionRef.current = createRecognition(() => {});
-    if (!recognitionRef.current) {
-      alert("Speech recognition not supported.");
-      return;
-    }
-    try { recognitionRef.current.start(); } catch (e) { setIsListening(false); }
   };
 
   useEffect(() => {
     if (botId) fetchBotInfo();
   }, [botId]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(() => { scrollToBottom(); }, [messages]);
 
   const fetchBotInfo = async () => {
-    try {
-      await fetch(`${API_URL}/api/bots/${botId}`);
-    } catch (error) {
-      console.error("Error:", error);
-    }
+    try { await fetch(`${API_URL}/api/bots/${botId}`); } catch (e) {}
   };
 
   const createBot = async () => {
@@ -188,7 +284,7 @@ function App() {
       const res = await fetch(`${API_URL}/api/bots`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Clinic Bot", website: window.location.href }),
+        body: JSON.stringify({ name: "Company Bot", website: window.location.href }),
       });
       const data = await res.json();
       localStorage.setItem("botId", data.botId);
@@ -214,18 +310,14 @@ function App() {
       if (data.success) {
         setUploadStatus({ type: "success", message: `✅ ${data.filename} uploaded!` });
         setActiveTab("chat");
-        // Add welcome message
-        setMessages([{
-          role: "assistant",
-          content: language === 'hi' 
-            ? "नमस्ते! 🏥 आपका दस्तावेज़ अपलोड हो गया है। आप मुझसे क्लिनिक के बारे में कुछ भी पूछ सकते हैं या अपॉइंटमेंट बुक कर सकते हैं।"
-            : "Hello! 🏥 Your document has been uploaded. You can ask me anything about the clinic or book an appointment with any doctor mentioned in the document."
-        }]);
+        // Add welcome message after upload
+        const welcomeMsg = { role: "assistant", content: "Hello! 👋 Your document has been uploaded. I can now answer questions about your company and help you book meetings with our team. How can I help you today?" };
+        setMessages(prev => [...prev, welcomeMsg]);
       } else {
         setUploadStatus({ type: "error", message: data.error || "Upload failed." });
       }
     } catch (error) {
-      setUploadStatus({ type: "error", message: "Upload failed. Check connection." });
+      setUploadStatus({ type: "error", message: "Upload failed." });
     }
   };
 
@@ -235,43 +327,48 @@ function App() {
     handleFileUpload(e.dataTransfer.files[0]);
   };
 
-  // Send message - unified chat
-  const sendMessage = async (e, fromVoice = false) => {
+  const sendMessage = async (e) => {
     if (e) e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userMessage = input.trim();
-    const wasVoiceInput = fromVoice || voiceInputUsed;
+    // Clear auto-send timer
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current);
+      autoSendTimerRef.current = null;
+    }
 
+    // Stop any ongoing speech
+    stopSpeaking();
+
+    const userMessage = input.trim();
     setInput("");
-    setVoiceInputUsed(false);
-    setMessages((prev) => [...prev, { role: "user", content: userMessage, fromVoice: wasVoiceInput }]);
+    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
     setIsLoading(true);
 
     try {
       const response = await fetch(`${API_URL}/api/bots/${botId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, language, sessionId }),
+        body: JSON.stringify({ message: userMessage, sessionId }),
       });
-
       const data = await response.json();
-      setMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
-      if (data.sessionId) setSessionId(data.sessionId);
-      if (wasVoiceInput || voiceEnabled) speakText(data.answer, wasVoiceInput);
+      setMessages(prev => [...prev, { role: "assistant", content: data.answer }]);
+      
+      // Speak the response if voice is enabled
+      if (voiceEnabled && data.answer) {
+        speak(data.answer);
+      }
+      
+      if (data.sessionId) {
+        setSessionId(data.sessionId);
+        localStorage.setItem("chatSessionId", data.sessionId);
+      }
     } catch (error) {
-      setMessages((prev) => [...prev, { role: "assistant", content: "Cannot connect to server." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "Cannot connect to server." }]);
     } finally {
       setIsLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (voiceInputUsed && input.trim()) {
-      const timer = setTimeout(() => sendMessage(null, true), 500);
-      return () => clearTimeout(timer);
-    }
-  }, [voiceInputUsed, input]);
 
   const clearChat = async () => {
     try {
@@ -280,31 +377,13 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
       });
-      const newSession = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      setSessionId(newSession);
-      setMessages([{
-        role: "assistant",
-        content: language === 'hi' 
-          ? "नमस्ते! 🏥 मैं आपकी कैसे मदद कर सकती हूं? आप मुझसे क्लिनिक के बारे में पूछ सकते हैं या अपॉइंटमेंट बुक कर सकते हैं।"
-          : "Hello! 🏥 How can I help you? You can ask me about the clinic or book an appointment."
-      }]);
-    } catch (error) {
-      console.error("Error clearing chat:", error);
-    }
-  };
-
-  const copyEmbedCode = () => {
-    const code = `<script>
-  window.ChatbotConfig = {
-    apiUrl: '${API_URL}',
-    botId: '${botId}',
-    theme: 'dark',
-    position: 'right'
-  };
-</script>
-<script src="${API_URL}/widget/chatbot.js"></script>`;
-    navigator.clipboard.writeText(code);
-    alert("Embed code copied!");
+      // Create new session
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      setSessionId(newSessionId);
+      localStorage.setItem("chatSessionId", newSessionId);
+      setMessages([{ role: "assistant", content: "Hello! 👋 How can I help you today? I can answer questions about our company or help you schedule a meeting." }]);
+      setHistoryLoaded(true);
+    } catch (error) {}
   };
 
   if (!botId) {
@@ -312,9 +391,9 @@ function App() {
       <div className="app">
         <div className="onboarding">
           <div className="onboarding-content">
-            <div className="logo-large">🏥</div>
-            <h1>Medical Clinic AI</h1>
-            <p>AI assistant that answers questions & books appointments from your clinic documents</p>
+            <div className="logo-large">💼</div>
+            <h1>Company AI Assistant</h1>
+            <p>AI chatbot that answers questions from your documents and books meetings with your team</p>
             <button className="btn-primary" onClick={createBot}>Get Started</button>
           </div>
         </div>
@@ -328,19 +407,16 @@ function App() {
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="logo">
-              <span className="logo-icon">🏥</span>
-              <span>Clinic AI</span>
+              <span className="logo-icon">💼</span>
+              <span>AI Assistant</span>
             </div>
           </div>
           <nav className="sidebar-nav">
             <button className={`nav-item ${activeTab === "chat" ? "active" : ""}`} onClick={() => setActiveTab("chat")}>
-              💬 Chat & Book
+              💬 Chat
             </button>
             <button className={`nav-item ${activeTab === "upload" ? "active" : ""}`} onClick={() => setActiveTab("upload")}>
               📤 Upload Document
-            </button>
-            <button className={`nav-item ${activeTab === "embed" ? "active" : ""}`} onClick={() => setActiveTab("embed")}>
-              🔗 Embed Code
             </button>
           </nav>
           <div className="sidebar-footer">
@@ -355,33 +431,18 @@ function App() {
           {activeTab === "chat" && (
             <div className="chat-panel">
               <div className="chat-header">
-                <h2>💬 Chat & Book Appointments</h2>
+                <h2>💬 Chat with AI</h2>
                 <div className="header-controls">
-                  <button className="clear-btn" onClick={clearChat} title="New conversation">🔄 New Chat</button>
-                  <select className="language-select" value={language} onChange={(e) => { setLanguage(e.target.value); setSelectedVoice(''); }}>
-                    {languages.map(lang => <option key={lang.code} value={lang.code}>{lang.flag} {lang.name}</option>)}
-                  </select>
-                  {availableVoices.length > 0 && (
-                    <select className="voice-select" value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)}>
-                      <option value="">Auto</option>
-                      {availableVoices.filter(v => language === 'hi' ? v.lang.includes('hi') : v.lang.startsWith('en')).map(voice => <option key={voice.name} value={voice.name}>{voice.name}</option>)}
-                    </select>
-                  )}
-                  <div className="voice-controls">
-                    {isSpeaking && <button className="voice-btn stop" onClick={stopSpeaking}>⏹️</button>}
-                    <button className={`voice-btn ${voiceEnabled ? 'active' : ''}`} onClick={() => setVoiceEnabled(!voiceEnabled)}>
-                      {voiceEnabled ? '🔊' : '🔇'}
-                    </button>
-                  </div>
+                  <button className="clear-btn" onClick={clearChat}>🔄 New Chat</button>
                 </div>
               </div>
 
               <div className="messages">
                 {messages.length === 0 && !isLoading && (
                   <div className="empty-chat">
-                    <div className="empty-icon">🏥</div>
-                    <p>Welcome to Clinic AI!</p>
-                    <span>Upload a clinic document first, then ask questions or book appointments</span>
+                    <div className="empty-icon">💼</div>
+                    <p>Welcome!</p>
+                    <span>Upload a company document first, then ask questions or book meetings</span>
                     <div className="quick-actions">
                       <button onClick={() => setActiveTab("upload")}>📤 Upload Document</button>
                     </div>
@@ -390,19 +451,16 @@ function App() {
                 {messages.map((msg, i) => (
                   <div key={i} className={`message ${msg.role}`}>
                     <div className="message-avatar">
-                      {msg.role === "assistant" ? '🏥' : (msg.fromVoice ? '🎤' : '👤')}
+                      {msg.role === "assistant" ? '🤖' : '👤'}
                     </div>
                     <div className="message-content">
                       <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
-                      {msg.role === "assistant" && (
-                        <button className="speak-btn" onClick={() => speakText(msg.content, true)}>🔊</button>
-                      )}
                     </div>
                   </div>
                 ))}
                 {isLoading && (
                   <div className="message assistant">
-                    <div className="message-avatar">🏥</div>
+                    <div className="message-avatar">🤖</div>
                     <div className="message-content typing"><span></span><span></span><span></span></div>
                   </div>
                 )}
@@ -410,20 +468,42 @@ function App() {
               </div>
 
               <form className="input-area" onSubmit={sendMessage}>
-                <button type="button" className={`mic-btn ${isListening ? "listening" : ""}`} onClick={toggleListening}>
-                  {isListening ? "🛑" : "🎤"}
+                {/* Voice toggle */}
+                <button
+                  type="button"
+                  className={`voice-toggle ${voiceEnabled ? "active" : ""}`}
+                  onClick={() => setVoiceEnabled(!voiceEnabled)}
+                  title={voiceEnabled ? "Voice output ON" : "Voice output OFF"}
+                >
+                  {voiceEnabled ? "🔊" : "🔇"}
                 </button>
+                
+                {/* Mic button */}
+                <button
+                  type="button"
+                  className={`mic-btn ${isListening ? "listening" : ""}`}
+                  onClick={toggleListening}
+                  disabled={isLoading}
+                  title={isListening ? "Stop listening" : "Start voice input"}
+                >
+                  {isListening ? "🎤" : "🎙️"}
+                </button>
+                
                 <input
                   type="text"
                   value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    if (isListening) { recognitionRef.current?.stop(); setIsListening(false); }
-                  }}
-                  placeholder={isListening ? "🎤 Listening..." : "Ask about clinic or book appointment..."}
-                  className={isListening ? "listening-placeholder" : ""}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={isListening ? "Listening..." : "Ask a question or book a meeting..."}
                   disabled={isLoading}
                 />
+                
+                {/* Stop speaking button */}
+                {isSpeaking && (
+                  <button type="button" className="stop-btn" onClick={stopSpeaking} title="Stop speaking">
+                    ⏹️
+                  </button>
+                )}
+                
                 <button type="submit" disabled={isLoading || !input.trim()}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
@@ -436,8 +516,8 @@ function App() {
           {activeTab === "upload" && (
             <div className="upload-panel">
               <div className="panel-header">
-                <h2>📤 Upload Clinic Document</h2>
-                <p>Upload your clinic PDF/DOCX with doctor info, services, timings. The AI will use this to answer questions and book appointments.</p>
+                <h2>📤 Upload Company Document</h2>
+                <p>Upload your company info (PDF/DOCX) - services, team, pricing, FAQs, etc.</p>
               </div>
               <div
                 className={`upload-zone ${dragOver ? "dragover" : ""}`}
@@ -453,34 +533,14 @@ function App() {
               </div>
               {uploadStatus && <div className={`upload-status ${uploadStatus.type}`}>{uploadStatus.message}</div>}
               <div className="upload-tips">
-                <h3>📋 Tips for best results:</h3>
+                <h3>📋 Include in your document:</h3>
                 <ul>
-                  <li>Include doctor names and their specialties</li>
-                  <li>Add clinic timings and available days</li>
-                  <li>List services and consultation fees</li>
-                  <li>Include contact information</li>
+                  <li>Company overview and services</li>
+                  <li>Team members and their roles</li>
+                  <li>Pricing and packages</li>
+                  <li>FAQs and contact info</li>
+                  <li>Available meeting times</li>
                 </ul>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "embed" && (
-            <div className="embed-panel">
-              <div className="panel-header">
-                <h2>🔗 Embed on Your Website</h2>
-                <p>Add this code to your website</p>
-              </div>
-              <div className="code-block">
-                <pre>{`<script>
-  window.ChatbotConfig = {
-    apiUrl: '${API_URL}',
-    botId: '${botId}',
-    theme: 'dark',
-    position: 'right'
-  };
-</script>
-<script src="${API_URL}/widget/chatbot.js"></script>`}</pre>
-                <button className="copy-btn" onClick={copyEmbedCode}>📋 Copy Code</button>
               </div>
             </div>
           )}
