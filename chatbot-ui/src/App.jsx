@@ -1,10 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import "./App.css";
 
 const API_URL = "http://localhost:3001";
-
-// Speech Recognition setup
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 function App() {
   const [botId, setBotId] = useState(localStorage.getItem("botId") || "");
@@ -14,254 +11,46 @@ function App() {
   const [activeTab, setActiveTab] = useState("chat");
   const [uploadStatus, setUploadStatus] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [documents, setDocuments] = useState([]);
   const [sessionId, setSessionId] = useState(() => {
-    const saved = localStorage.getItem("chatSessionId");
-    return saved || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return (
+      localStorage.getItem("chatSessionId") ||
+      `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    );
   });
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  
-  // Voice states
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(() => localStorage.getItem("voiceEnabled") === "true");
-  const [voices, setVoices] = useState([]);
-  const [selectedVoice, setSelectedVoice] = useState(null);
-  
+
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const recognitionRef = useRef(null);
-  const synthRef = useRef(window.speechSynthesis);
 
-  // Quick action buttons for sales flow
-  const quickActions = [
-    { icon: "🚀", label: "Services", message: "What services do you offer?" },
-    { icon: "💰", label: "Pricing", message: "I want to know the project cost estimation" },
-    { icon: "👨‍💻", label: "Hire Developer", message: "I want to hire a developer" },
-    { icon: "🤖", label: "MVP", message: "Tell me about MVP development packages" },
-    { icon: "📞", label: "Schedule Call", message: "I want to schedule a call with your team" },
-  ];
-
-  // Save sessionId to localStorage whenever it changes
   useEffect(() => {
-    if (sessionId) {
-      localStorage.setItem("chatSessionId", sessionId);
-    }
+    if (sessionId) localStorage.setItem("chatSessionId", sessionId);
   }, [sessionId]);
 
-  // Load chat history when botId and sessionId are available
   useEffect(() => {
-    if (botId && sessionId && !historyLoaded) {
-      loadChatHistory();
-    }
-  }, [botId, sessionId]);
-
-  const loadChatHistory = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/bots/${botId}/chat-history?sessionId=${sessionId}`);
-      const data = await res.json();
-      if (data.messages && data.messages.length > 0) {
-        setMessages(data.messages.map(m => ({ role: m.role, content: m.content })));
-      }
-      setHistoryLoaded(true);
-    } catch (error) {
-      console.error("Failed to load chat history");
-      setHistoryLoaded(true);
-    }
-  };
-
-  // Load voices for TTS
-  useEffect(() => {
-    const loadVoices = () => {
-      const availableVoices = synthRef.current.getVoices();
-      setVoices(availableVoices);
-      
-      const voicePriority = [
-        "Samantha (Enhanced)", "Samantha (Premium)", 
-        "Alex (Enhanced)", "Alex",
-        "Ava (Enhanced)", "Ava (Premium)", "Ava",
-        "Google UK English Female", "Google UK English Male",
-        "Google US English",
-        "Microsoft Aria Online", "Microsoft Jenny Online",
-        "Samantha", "Karen", "Daniel",
-      ];
-      
-      let voice = null;
-      for (const pref of voicePriority) {
-        voice = availableVoices.find(v => v.name === pref || v.name.includes(pref));
-        if (voice) break;
-      }
-      
-      if (!voice) {
-        voice = availableVoices.find(v => v.lang === "en-US") 
-             || availableVoices.find(v => v.lang.startsWith("en")) 
-             || availableVoices[0];
-      }
-      
-      setSelectedVoice(voice);
-    };
-
-    loadVoices();
-    if (synthRef.current.onvoiceschanged !== undefined) {
-      synthRef.current.onvoiceschanged = loadVoices;
-    }
-    setTimeout(loadVoices, 100);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("voiceEnabled", voiceEnabled);
-  }, [voiceEnabled]);
-
-  const speak = useCallback((text) => {
-    if (!voiceEnabled || !text) return;
-    
-    synthRef.current.cancel();
-    
-    let cleanText = text
-      .replace(/[*_~`#]/g, "")
-      .replace(/\n+/g, " ")
-      .replace(/\s+/g, " ")
-      .replace(/(\d+)/g, " $1 ")
-      .trim();
-    
-    const sentences = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
-    
-    let currentIndex = 0;
-    
-    const speakNext = () => {
-      if (currentIndex >= sentences.length) {
-        setIsSpeaking(false);
-        return;
-      }
-      
-      const sentence = sentences[currentIndex].trim();
-      if (!sentence) {
-        currentIndex++;
-        speakNext();
-        return;
-      }
-      
-      const utterance = new SpeechSynthesisUtterance(sentence);
-      
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-      }
-      
-      utterance.rate = 0.92;
-      utterance.pitch = 1.0;
-      utterance.volume = 1;
-      
-      utterance.onstart = () => setIsSpeaking(true);
-      
-      utterance.onend = () => {
-        currentIndex++;
-        setTimeout(speakNext, 150 + Math.random() * 150);
-      };
-      
-      utterance.onerror = (e) => {
-        console.error("Speech error:", e);
-        setIsSpeaking(false);
-      };
-      
-      synthRef.current.speak(utterance);
-    };
-    
-    setIsSpeaking(true);
-    speakNext();
-  }, [voiceEnabled, selectedVoice]);
-
-  const stopSpeaking = () => {
-    synthRef.current.cancel();
-    setIsSpeaking(false);
-  };
-
-  const autoSendTimerRef = useRef(null);
-
-  const startListening = useCallback(() => {
-    if (!SpeechRecognition) {
-      alert("Voice input not supported in your browser. Try Chrome or Edge.");
-      return;
-    }
-
-    if (autoSendTimerRef.current) {
-      clearTimeout(autoSendTimerRef.current);
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
-    recognition.onresult = (event) => {
-      let transcript = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript;
-      }
-      setInput(transcript);
-      
-      if (event.results[event.results.length - 1].isFinal) {
-        setIsListening(false);
-        
-        if (transcript.trim()) {
-          autoSendTimerRef.current = setTimeout(() => {
-            const form = document.querySelector('.input-area');
-            if (form) {
-              form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-            }
-          }, 1000);
-        }
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.error("Speech error:", event.error);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognitionRef.current = recognition;
-    recognition.start();
-  }, []);
-
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-  };
-
-  const toggleListening = () => {
-    if (isListening) {
-      stopListening();
+    if (!botId) {
+      createBot();
     } else {
-      startListening();
+      loadDocuments();
     }
-  };
-
-  useEffect(() => {
-    if (botId) fetchBotInfo();
   }, [botId]);
 
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  useEffect(() => { scrollToBottom(); }, [messages]);
+  useEffect(() => {
+    if (botId && sessionId && !historyLoaded) loadChatHistory();
+  }, [botId, sessionId]);
 
-  const fetchBotInfo = async () => {
-    try { await fetch(`${API_URL}/api/bots/${botId}`); } catch (e) {}
-  };
+  const scrollToBottom = () =>
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const createBot = async () => {
     try {
       const res = await fetch(`${API_URL}/api/bots`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "Murmu Software Bot", website: "murmusoftware.com" }),
+        body: JSON.stringify({ name: "My RAG Bot" }),
       });
       const data = await res.json();
       localStorage.setItem("botId", data.botId);
@@ -271,48 +60,71 @@ function App() {
     }
   };
 
+  const loadChatHistory = async () => {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/bots/${botId}/chat-history?sessionId=${sessionId}`
+      );
+      const data = await res.json();
+      if (data.messages?.length > 0) {
+        setMessages(data.messages.map((m) => ({ role: m.role, content: m.content })));
+      }
+      setHistoryLoaded(true);
+    } catch {
+      setHistoryLoaded(true);
+    }
+  };
+
+  const loadDocuments = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/bots/${botId}/documents`);
+      const data = await res.json();
+      setDocuments(data.documents || []);
+    } catch {}
+  };
+
   const handleFileUpload = async (file) => {
-    const allowedTypes = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    const allowedTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
     if (!file || !allowedTypes.includes(file.type)) {
       setUploadStatus({ type: "error", message: "Please upload a PDF or DOCX file" });
       return;
     }
-    setUploadStatus({ type: "loading", message: "Processing document..." });
+    setUploadStatus({ type: "loading", message: `Processing ${file.name}...` });
     const formData = new FormData();
     formData.append("pdf", file);
 
     try {
-      const res = await fetch(`${API_URL}/api/bots/${botId}/upload`, { method: "POST", body: formData });
+      const res = await fetch(`${API_URL}/api/bots/${botId}/upload`, {
+        method: "POST",
+        body: formData,
+      });
       const data = await res.json();
       if (data.success) {
-        setUploadStatus({ type: "success", message: `✅ ${data.filename} uploaded!` });
-        setActiveTab("chat");
-        const welcomeMsg = { 
-          role: "assistant", 
-          content: `👋 Welcome to Murmu Software Infotech!
-
-We help businesses build:
-✔ Custom Software & Platforms
-✔ AI & MVP Solutions
-✔ Enterprise & CMS Implementations
-✔ Dedicated Development Teams
-
-How can I help you today?
-
-1. 🚀 Software Development Services
-2. 💰 Project Cost Estimation
-3. 👨‍💻 Hire Developers
-4. 🤖 AI/MVP Development
-5. 🏢 Enterprise Solutions
-6. 📞 Schedule a Call` 
-        };
-        setMessages(prev => [...prev, welcomeMsg]);
+        setUploadStatus({
+          type: "success",
+          message: `${data.filename} uploaded — ${data.chunks} chunks indexed`,
+        });
+        loadDocuments();
       } else {
         setUploadStatus({ type: "error", message: data.error || "Upload failed." });
       }
-    } catch (error) {
-      setUploadStatus({ type: "error", message: "Upload failed." });
+    } catch {
+      setUploadStatus({ type: "error", message: "Upload failed. Is the server running?" });
     }
+  };
+
+  const deleteDoc = async (sourceFile) => {
+    try {
+      await fetch(`${API_URL}/api/bots/${botId}/documents`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceFile }),
+      });
+      loadDocuments();
+    } catch {}
   };
 
   const handleDrop = (e) => {
@@ -321,41 +133,36 @@ How can I help you today?
     handleFileUpload(e.dataTransfer.files[0]);
   };
 
-  const sendMessage = async (e, quickMessage = null) => {
+  const sendMessage = async (e) => {
     if (e) e.preventDefault();
-    const messageToSend = quickMessage || input.trim();
-    if (!messageToSend || isLoading) return;
-
-    if (autoSendTimerRef.current) {
-      clearTimeout(autoSendTimerRef.current);
-      autoSendTimerRef.current = null;
-    }
-
-    stopSpeaking();
+    const msg = input.trim();
+    if (!msg || isLoading) return;
 
     setInput("");
-    setMessages(prev => [...prev, { role: "user", content: messageToSend }]);
+    setMessages((prev) => [...prev, { role: "user", content: msg }]);
     setIsLoading(true);
 
     try {
       const response = await fetch(`${API_URL}/api/bots/${botId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: messageToSend, sessionId }),
+        body: JSON.stringify({ message: msg, sessionId }),
       });
       const data = await response.json();
-      setMessages(prev => [...prev, { role: "assistant", content: data.answer }]);
-      
-      if (voiceEnabled && data.answer) {
-        speak(data.answer);
-      }
-      
+      const sources = data.sources?.filter((s) => s.relevance > 20) || [];
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.answer, sources },
+      ]);
       if (data.sessionId) {
         setSessionId(data.sessionId);
         localStorage.setItem("chatSessionId", data.sessionId);
       }
-    } catch (error) {
-      setMessages(prev => [...prev, { role: "assistant", content: "Cannot connect to server." }]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Cannot connect to server. Make sure the backend is running." },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -368,45 +175,13 @@ How can I help you today?
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
       });
-      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      setSessionId(newSessionId);
-      localStorage.setItem("chatSessionId", newSessionId);
-      setMessages([{ 
-        role: "assistant", 
-        content: `👋 Welcome to Murmu Software Infotech!
-
-We help businesses build:
-✔ Custom Software & Platforms
-✔ AI & MVP Solutions
-✔ Enterprise & CMS Implementations
-✔ Dedicated Development Teams
-
-How can I help you today?` 
-      }]);
-      setHistoryLoaded(true);
-    } catch (error) {}
+    } catch {}
+    const newSession = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(newSession);
+    localStorage.setItem("chatSessionId", newSession);
+    setMessages([]);
+    setHistoryLoaded(true);
   };
-
-  if (!botId) {
-    return (
-      <div className="app">
-        <div className="onboarding">
-          <div className="onboarding-content">
-            <div className="logo-large">🏢</div>
-            <h1>Murmu Software Infotech</h1>
-            <p>AI-Powered Sales Assistant for Custom Software, AI/MVP Solutions, and Enterprise Platforms</p>
-            <div className="features-list">
-              <div className="feature-item">🚀 Software Development</div>
-              <div className="feature-item">🤖 AI & Automation</div>
-              <div className="feature-item">💼 Hire Developers</div>
-              <div className="feature-item">📊 Enterprise Solutions</div>
-            </div>
-            <button className="btn-primary" onClick={createBot}>Start Conversation</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="app">
@@ -414,34 +189,63 @@ How can I help you today?`
         <aside className="sidebar">
           <div className="sidebar-header">
             <div className="logo">
-              <span className="logo-icon">🏢</span>
-              <span>Murmu Software</span>
+              <svg className="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+              <span>PDF RAG</span>
             </div>
           </div>
+
           <nav className="sidebar-nav">
-            <button className={`nav-item ${activeTab === "chat" ? "active" : ""}`} onClick={() => setActiveTab("chat")}>
-              💬 Sales Chat
+            <button
+              className={`nav-item ${activeTab === "chat" ? "active" : ""}`}
+              onClick={() => setActiveTab("chat")}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              Chat
             </button>
-            <button className={`nav-item ${activeTab === "upload" ? "active" : ""}`} onClick={() => setActiveTab("upload")}>
-              📤 Company Docs
+            <button
+              className={`nav-item ${activeTab === "upload" ? "active" : ""}`}
+              onClick={() => setActiveTab("upload")}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Documents
             </button>
           </nav>
-          <div className="sidebar-services">
-            <h4>Quick Actions</h4>
-            {quickActions.map((action, i) => (
-              <button 
-                key={i} 
-                className="service-btn"
-                onClick={() => { setActiveTab("chat"); sendMessage(null, action.message); }}
-              >
-                {action.icon} {action.label}
-              </button>
-            ))}
-          </div>
+
+          {documents.length > 0 && (
+            <div className="sidebar-docs">
+              <h4>Uploaded Files</h4>
+              {documents.map((doc, i) => (
+                <div key={i} className="doc-item">
+                  <div className="doc-info">
+                    <span className="doc-name" title={doc.source_file}>
+                      {doc.source_file}
+                    </span>
+                    <span className="doc-chunks">{doc.chunks} chunks</span>
+                  </div>
+                  <button className="doc-delete" onClick={() => deleteDoc(doc.source_file)} title="Remove">
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="sidebar-footer">
             <div className="bot-info">
               <span className="status-dot"></span>
-              <span>Online</span>
+              <span>Connected</span>
             </div>
           </div>
         </aside>
@@ -451,87 +255,123 @@ How can I help you today?`
             <div className="chat-panel">
               <div className="chat-header">
                 <div className="header-info">
-                  <h2>🤖 Sales Assistant</h2>
-                  <span className="header-subtitle">Pre-Sales • Cost Estimation • Meeting Scheduler</span>
+                  <h2>Ask your documents</h2>
+                  <span className="header-subtitle">
+                    {documents.length > 0
+                      ? `${documents.length} document${documents.length > 1 ? "s" : ""} loaded`
+                      : "Upload a PDF to get started"}
+                  </span>
                 </div>
                 <div className="header-controls">
-                  <button className="clear-btn" onClick={clearChat}>🔄 New Chat</button>
+                  <button className="clear-btn" onClick={clearChat}>
+                    New Chat
+                  </button>
                 </div>
               </div>
 
               <div className="messages">
                 {messages.length === 0 && !isLoading && (
                   <div className="empty-chat">
-                    <div className="empty-icon">🏢</div>
-                    <h2>Welcome to Murmu Software Infotech!</h2>
-                    <p>Your AI-powered sales assistant. I can help you with:</p>
+                    <svg className="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="64" height="64">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                    <h2>PDF RAG Assistant</h2>
+                    <p>Upload PDFs and ask questions about their content</p>
                     <div className="empty-features">
-                      <div className="empty-feature">💰 Project Cost Estimation</div>
-                      <div className="empty-feature">👨‍💻 Developer Hiring Rates</div>
-                      <div className="empty-feature">🤖 MVP Development Packages</div>
-                      <div className="empty-feature">📞 Schedule Expert Consultation</div>
+                      <div className="empty-feature">
+                        <strong>Upload</strong>
+                        <span>PDF or DOCX files</span>
+                      </div>
+                      <div className="empty-feature">
+                        <strong>Ask</strong>
+                        <span>Questions in natural language</span>
+                      </div>
+                      <div className="empty-feature">
+                        <strong>Get</strong>
+                        <span>Answers with source citations</span>
+                      </div>
+                      <div className="empty-feature">
+                        <strong>Manage</strong>
+                        <span>Multiple documents at once</span>
+                      </div>
                     </div>
-                    <div className="quick-actions">
-                      <button onClick={() => setActiveTab("upload")}>📤 Upload Company Document First</button>
-                    </div>
+                    {documents.length === 0 && (
+                      <button className="btn-primary" onClick={() => setActiveTab("upload")}>
+                        Upload your first document
+                      </button>
+                    )}
                   </div>
                 )}
+
                 {messages.map((msg, i) => (
                   <div key={i} className={`message ${msg.role}`}>
                     <div className="message-avatar">
-                      {msg.role === "assistant" ? '🤖' : '👤'}
+                      {msg.role === "assistant" ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                          <line x1="9" y1="9" x2="9.01" y2="9" />
+                          <line x1="15" y1="9" x2="15.01" y2="9" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                          <circle cx="12" cy="7" r="4" />
+                        </svg>
+                      )}
                     </div>
-                    <div className="message-content">
-                      <p style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</p>
+                    <div className="message-bubble">
+                      <p style={{ whiteSpace: "pre-wrap" }}>{msg.content}</p>
+                      {msg.sources?.length > 0 && (
+                        <div className="message-sources">
+                          {msg.sources.map((s, j) => (
+                            <span key={j} className="source-tag">
+                              {s.file} ({s.relevance}%)
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
+
                 {isLoading && (
                   <div className="message assistant">
-                    <div className="message-avatar">🤖</div>
-                    <div className="message-content typing"><span></span><span></span><span></span></div>
+                    <div className="message-avatar">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                        <line x1="9" y1="9" x2="9.01" y2="9" />
+                        <line x1="15" y1="9" x2="15.01" y2="9" />
+                      </svg>
+                    </div>
+                    <div className="message-bubble typing">
+                      <span></span><span></span><span></span>
+                    </div>
                   </div>
                 )}
                 <div ref={messagesEndRef} />
               </div>
 
               <form className="input-area" onSubmit={sendMessage}>
-                <button
-                  type="button"
-                  className={`voice-toggle ${voiceEnabled ? "active" : ""}`}
-                  onClick={() => setVoiceEnabled(!voiceEnabled)}
-                  title={voiceEnabled ? "Voice output ON" : "Voice output OFF"}
-                >
-                  {voiceEnabled ? "🔊" : "🔇"}
-                </button>
-                
-                <button
-                  type="button"
-                  className={`mic-btn ${isListening ? "listening" : ""}`}
-                  onClick={toggleListening}
-                  disabled={isLoading}
-                  title={isListening ? "Stop listening" : "Start voice input"}
-                >
-                  {isListening ? "🎤" : "🎙️"}
-                </button>
-                
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder={isListening ? "Listening..." : "Ask about services, pricing, or schedule a call..."}
+                  placeholder={
+                    documents.length > 0
+                      ? "Ask a question about your documents..."
+                      : "Upload a document first, then ask questions..."
+                  }
                   disabled={isLoading}
                 />
-                
-                {isSpeaking && (
-                  <button type="button" className="stop-btn" onClick={stopSpeaking} title="Stop speaking">
-                    ⏹️
-                  </button>
-                )}
-                
                 <button type="submit" disabled={isLoading || !input.trim()}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
                   </svg>
                 </button>
               </form>
@@ -541,33 +381,67 @@ How can I help you today?`
           {activeTab === "upload" && (
             <div className="upload-panel">
               <div className="panel-header">
-                <h2>📤 Upload Company Document</h2>
-                <p>Upload your company info (PDF/DOCX) - services, team, pricing, etc.</p>
+                <h2>Upload Documents</h2>
+                <p>Upload PDF or DOCX files to build your knowledge base</p>
               </div>
+
               <div
                 className={`upload-zone ${dragOver ? "dragover" : ""}`}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current.click()}
               >
-                <div className="upload-icon">📄</div>
-                <p>Drag & drop document here</p>
-                <span>or click to browse</span>
-                <input ref={fileInputRef} type="file" accept=".pdf,.docx" onChange={(e) => handleFileUpload(e.target.files[0])} style={{ display: "none" }} />
+                <svg className="upload-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="48" height="48">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <p>Drag & drop files here</p>
+                <span>or click to browse — PDF, DOCX up to 20MB</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx"
+                  onChange={(e) => handleFileUpload(e.target.files[0])}
+                  style={{ display: "none" }}
+                />
               </div>
-              {uploadStatus && <div className={`upload-status ${uploadStatus.type}`}>{uploadStatus.message}</div>}
-              <div className="upload-tips">
-                <h3>📋 Recommended Content:</h3>
-                <ul>
-                  <li>✓ Company overview and services</li>
-                  <li>✓ Team members and roles</li>
-                  <li>✓ Pricing packages (MVP, Enterprise)</li>
-                  <li>✓ Developer hiring rates</li>
-                  <li>✓ Technology stack</li>
-                  <li>✓ Case studies / Portfolio</li>
-                </ul>
-              </div>
+
+              {uploadStatus && (
+                <div className={`upload-status ${uploadStatus.type}`}>
+                  {uploadStatus.message}
+                </div>
+              )}
+
+              {documents.length > 0 && (
+                <div className="documents-list">
+                  <h3>Uploaded Documents</h3>
+                  {documents.map((doc, i) => (
+                    <div key={i} className="document-card">
+                      <div className="document-info">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <div>
+                          <span className="document-name">{doc.source_file}</span>
+                          <span className="document-meta">{doc.chunks} chunks</span>
+                        </div>
+                      </div>
+                      <button
+                        className="document-delete"
+                        onClick={() => deleteDoc(doc.source_file)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </main>

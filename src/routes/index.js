@@ -7,14 +7,12 @@ import { dirname, join } from "path";
 import * as botController from "../controllers/bot.controller.js";
 import * as documentController from "../controllers/document.controller.js";
 import * as chatController from "../controllers/chat.controller.js";
-import * as appointmentController from "../controllers/appointment.controller.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const router = Router();
 
-// Configure multer for file uploads
 const uploadDir = join(__dirname, "../../uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -34,25 +32,24 @@ const upload = multer({
     ];
     cb(null, allowed.includes(file.mimetype));
   },
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 20 * 1024 * 1024 },
 });
 
-// ==================== BOT ROUTES ====================
+// Bot
 router.post("/bots", botController.create);
 router.get("/bots/:botId", botController.getInfo);
 
-// ==================== DOCUMENT ROUTES ====================
+// Documents
 router.post("/bots/:botId/upload", upload.single("pdf"), documentController.upload);
+router.get("/bots/:botId/documents", documentController.listDocuments);
+router.delete("/bots/:botId/documents", documentController.deleteDocument);
 
-// ==================== CHAT ROUTES ====================
+// Chat
 router.post("/bots/:botId/chat", chatController.chat);
 router.get("/bots/:botId/chat-history", chatController.getHistory);
 router.post("/bots/:botId/clear-conversation", chatController.clearHistory);
 
-// ==================== APPOINTMENT ROUTES ====================
-router.get("/bots/:botId/appointments", appointmentController.list);
-
-// ==================== HEALTH CHECK ====================
+// Health
 router.get("/health", (req, res) => {
   res.json({
     status: "ok",
@@ -62,4 +59,3 @@ router.get("/health", (req, res) => {
 });
 
 export default router;
-
